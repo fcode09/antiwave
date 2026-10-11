@@ -219,6 +219,8 @@ func handleKey(ev *tcell.EventKey, r *visual.Renderer, src audio.Source) bool {
 		r.ToggleMono()
 	case 'a':
 		r.ToggleAutoGain()
+	case 'e':
+		r.NextEffect()
 	case '+', '=':
 		r.AdjustGain(1.15)
 	case '-', '_':

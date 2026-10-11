@@ -241,14 +241,16 @@ func (r *Renderer) drawWaterfall(grid [][]Cell, f Frame, mags []float64, w, h in
 		r.fall = nil
 		r.fallW = w
 	}
-	row := make([]float32, w)
-	raw := columnRaw(mags, w, f.SampleRate)
-	for c := 0; c < w; c++ {
-		row[c] = float32(raw[c])
-	}
-	r.fall = append([][]float32{row}, r.fall...)
-	if len(r.fall) > h {
-		r.fall = r.fall[:h]
+	if !f.Paused {
+		row := make([]float32, w)
+		raw := columnRaw(mags, w, f.SampleRate)
+		for c := 0; c < w; c++ {
+			row[c] = float32(raw[c])
+		}
+		r.fall = append([][]float32{row}, r.fall...)
+		if len(r.fall) > h {
+			r.fall = r.fall[:h]
+		}
 	}
 	for y, rr := range r.fall {
 		for c := 0; c < w && c < len(rr); c++ {

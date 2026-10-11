@@ -74,6 +74,7 @@ make release
 | `f` | toggle immersive (full-screen) |
 | `Esc` | exit immersive |
 | `a` | toggle automatic gain |
+| `e` | cycle effect level (clean / balanced / cinematic) |
 | `+` / `-` | visual gain up / down |
 | `o` | inverted phase (visual mirror) |
 | `space` | pause / freeze |

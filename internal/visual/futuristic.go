@@ -35,7 +35,7 @@ func (r *Renderer) glowStep(paused bool) float64 {
 		return 0
 	}
 	r.animT += dt
-	f := float32(math.Exp(-3.0 * dt))
+	f := float32(math.Exp(-r.trailDecay() * dt))
 	for i := range r.glow {
 		r.glow[i] *= f
 	}
@@ -150,15 +150,38 @@ func bandEnergy(mags []float64, n, sampleRate int) []float64 {
 
 func (r *Renderer) drawHalo(grid [][]Cell, f Frame, mags []float64, w, h int) {
 	r.glowInit(w, h)
-	r.glowStep(f.Paused)
+	dt := r.glowStep(f.Paused)
 
 	const nBands = 96
 	const steps = 256
 	levels := bandEnergy(mags, nBands, f.SampleRate)
 
+	// Smooth band levels (attack/release) to avoid jitter.
+	if len(r.ringSmooth) != nBands {
+		r.ringSmooth = make([]float64, nBands)
+	}
+	attack, release := 0.0, 0.0
+	if dt > 0 {
+		attack = 1 - math.Exp(-dt/0.05)
+		release = 1 - math.Exp(-dt/0.20)
+	}
+	for b := range levels {
+		s := r.ringSmooth[b]
+		t := levels[b]
+		if t >= s {
+			s += (t - s) * attack
+		} else {
+			s += (t - s) * release
+		}
+		r.ringSmooth[b] = s
+		levels[b] = s
+	}
+
 	cx, cy := float64(r.glowW)/2, float64(r.glowH)/2
-	base := math.Min(float64(r.glowW), float64(r.glowH)) * 0.40
-	amp := math.Min(float64(r.glowW), float64(r.glowH)) * 0.22
+	minDim := math.Min(float64(r.glowW), float64(r.glowH))
+	base := minDim * 0.34
+	amp := minDim * 0.10
+	maxR := minDim*0.5 - 1
 	if base < 6 {
 		base = 6
 	}
@@ -170,28 +193,49 @@ func (r *Renderer) drawHalo(grid [][]Cell, f Frame, mags []float64, w, h int) {
 		}
 	}
 
-	rot := r.animT * 0.25 // slow rotation keeps it alive between beats
-	prevX, prevY := -1, -1
-	for i := 0; i <= steps; i++ {
-		a := 2*math.Pi*float64(i)/float64(steps) + rot
-		band := i * nBands / steps
-		if band >= nBands {
-			band = nBands - 1
+	// Silence fade: when quiet, do not stamp the reactive ring.
+	var total float64
+	for _, l := range levels {
+		total += l
+	}
+	silent := total/float64(nBands) < 0.015
+
+	intensity := r.intensity()
+	rot := r.animT * 0.25
+
+	if !silent {
+		// Symmetric mapping: bass at the bottom, treble at the top, seamless seam.
+		half := steps / 2
+		prevX, prevY := -1, -1
+		for i := 0; i <= steps; i++ {
+			var band int
+			if i <= half {
+				band = i * (nBands - 1) / half
+			} else {
+				band = (steps - i) * (nBands - 1) / half
+			}
+			a := 2*math.Pi*float64(i)/float64(steps) + rot
+			rad := base + levels[band]*amp + bass*amp*0.5
+			if rad > maxR {
+				rad = maxR
+			}
+			x := int(cx + rad*math.Cos(a) + 0.5)
+			y := int(cy + rad*math.Sin(a) + 0.5)
+			if prevX >= 0 {
+				r.glowLine(prevX, prevY, x, y, intensity)
+			}
+			prevX, prevY = x, y
 		}
-		lvl := levels[band]
-		rad := base + lvl*amp + bass*amp*0.5
-		x := int(cx + rad*math.Cos(a) + 0.5)
-		y := int(cy + rad*math.Sin(a) + 0.5)
-		if prevX >= 0 {
-			r.glowLine(prevX, prevY, x, y, 1)
-		}
-		prevX, prevY = x, y
 	}
 
-	// Faint static reference ring for depth.
+	// Faint reference ring for depth (also the idle state in silence).
 	for i := 0; i <= steps; i += 4 {
 		a := 2 * math.Pi * float64(i) / float64(steps)
-		r.glowSet(int(cx+base*math.Cos(a)+0.5), int(cy+base*math.Sin(a)+0.5), 0.16)
+		rad := base
+		if rad > maxR {
+			rad = maxR
+		}
+		r.glowSet(int(cx+rad*math.Cos(a)+0.5), int(cy+rad*math.Sin(a)+0.5), 0.14*intensity)
 	}
 
 	r.renderGlow(grid, w, h)
@@ -240,7 +284,7 @@ func (r *Renderer) drawOrbit(grid [][]Cell, f Frame, mags []float64, w, h int) {
 
 		t := r.animT*o.speed + o.phase
 		x, y := ellipse(cx, cy, rx, ry, o.tilt, t)
-		r.glowSet(int(x+0.5), int(y+0.5), 1)
+		r.glowSet(int(x+0.5), int(y+0.5), r.intensity())
 	}
 
 	r.renderGlow(grid, w, h)
@@ -299,7 +343,7 @@ func (r *Renderer) drawNebula(grid [][]Cell, f Frame, mags []float64, w, h int) 
 		rr := p.baseR * (0.45 + bass*0.7 + 0.25*math.Sin(r.animT*1.5+p.phase)) * maxR
 		x := int(cx + rr*math.Cos(p.ang) + 0.5)
 		y := int(cy + rr*math.Sin(p.ang) + 0.5)
-		r.glowSet(x, y, 1)
+		r.glowSet(x, y, r.intensity())
 	}
 
 	r.renderGlow(grid, w, h)

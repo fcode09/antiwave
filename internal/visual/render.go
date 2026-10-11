@@ -191,6 +191,11 @@ type Renderer struct {
 	glowLast time.Time
 	animT    float64
 	parts    []particle
+
+	// Shared state for polish and mode isolation.
+	lastMode   Mode
+	ringSmooth []float64
+	effect     int // 0 clean, 1 balanced, 2 cinematic
 }
 
 func NewRenderer() *Renderer {
@@ -200,6 +205,7 @@ func NewRenderer() *Renderer {
 		mono:     false,
 		autoGain: true,
 		gain:     1.0,
+		effect:   1, // balanced
 	}
 }
 
@@ -229,6 +235,35 @@ func (r *Renderer) AdjustGain(d float64) {
 	if r.gain > 16 {
 		r.gain = 16
 	}
+}
+
+// NextEffect cycles the visual effect level (clean → balanced → cinematic).
+func (r *Renderer) NextEffect() { r.effect = (r.effect + 1) % 3 }
+func (r *Renderer) EffectName() string {
+	return []string{"clean", "balanced", "cinematic"}[r.effect]
+}
+func (r *Renderer) trailDecay() float64 {
+	return []float64{6.0, 3.0, 1.5}[r.effect]
+}
+func (r *Renderer) intensity() float32 {
+	return []float32{0.8, 1.0, 1.15}[r.effect]
+}
+
+// deltaTime returns the elapsed time since the last frame, used for smoothing.
+// On the first frame (or after a long gap) it returns a clamped value so bars
+// snap to their target instead of starting from zero; when paused it returns 0
+// so animation freezes.
+func (r *Renderer) deltaTime(paused bool) float64 {
+	now := time.Now()
+	dt := now.Sub(r.lastT).Seconds()
+	r.lastT = now
+	if paused || dt <= 0 {
+		return 0
+	}
+	if dt > 0.1 {
+		dt = 0.1
+	}
+	return dt
 }
 
 // ModeByName resolves a mode by its display name (case-insensitive).
@@ -310,6 +345,17 @@ func (r *Renderer) Render(f Frame, w, h int) [][]Cell {
 	if h < 4 {
 		h = 4
 	}
+
+	// Reset only the shared glow buffer when switching modes, so trails never
+	// leak between Halo/Orbit/Nebula. Bar/meter smoothing and waterfall history
+	// carry over for smooth transitions.
+	if r.mode != r.lastMode {
+		r.lastMode = r.mode
+		r.glow = nil
+		r.glowW, r.glowH = 0, 0
+		r.parts = nil
+	}
+
 	grid := makeGrid(h, w)
 
 	if r.immersive {
@@ -405,7 +451,7 @@ func (r *Renderer) drawHeader(row []Cell, f Frame, w int) {
 	x = writeText(row, x+1, r.mode.String(), r.accent(), 1)
 	x = writeText(row, x+1, "phase:"+phase+" "+formatDur(f.Elapsed)+"/"+total, cDim, 0)
 
-	right := fmt.Sprintf("%s · %dHz", r.ThemeName(), f.SampleRate)
+	right := fmt.Sprintf("%s · %dHz · fx:%s", r.ThemeName(), f.SampleRate, r.EffectName())
 	if r.autoGain {
 		right += " · AUTO"
 	}
@@ -426,7 +472,7 @@ func (r *Renderer) drawFooter(row []Cell, f Frame, w int) {
 	if dom > 0 {
 		domStr = fmt.Sprintf("%.0fHz", dom)
 	}
-	left := "[Tab] mode   [t] theme   [f] focus   [a] auto   [+/-] gain   [q] quit"
+	left := "[Tab] mode   [t] theme   [f] focus   [e] fx   [q] quit"
 	right := fmt.Sprintf("peak %s   dom %s", toDB(peak), domStr)
 
 	x := writeText(row, 0, left, cDim, 0)
@@ -568,14 +614,7 @@ func (r *Renderer) columnLevels(f Frame, mags []float64, n int) (levels, peaks [
 	}
 
 	// Time-based smoothing + peak hold.
-	now := time.Now()
-	dt := now.Sub(r.lastT).Seconds()
-	if dt <= 0 {
-		dt = 1.0 / 30
-	} else if dt > 0.1 {
-		dt = 0.1
-	}
-	r.lastT = now
+	dt := r.deltaTime(f.Paused)
 	if len(r.smooth) != n {
 		r.smooth = make([]float64, n)
 		r.peaks = make([]float64, n)
