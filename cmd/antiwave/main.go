@@ -1,14 +1,15 @@
-// antiwave: visualizador de música en la terminal.
+// antiwave: visualizador de audio en la terminal.
 //
-// Reproduce un archivo WAV/MP3 y dibuja en vivo sus ondas (waveform) o barras
-// de espectro (FFT), con un modo "música opuesta" (fase invertida + visual
-// espejado).
+// Sin argumentos captura el audio del sistema (loopback en Windows, monitor de
+// PulseAudio/PipeWire en Linux) y lo dibuja en vivo. Con un archivo WAV/MP3 lo
+// reproduce y visualiza. Múltiples modos, temas y caracteres de terminal.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/term"
@@ -17,49 +18,56 @@ import (
 	"github.com/fquea/antiwave/internal/visual"
 )
 
+const minWindow = 2048 // al menos una FFT completa de muestras
+
 func usage() {
-	fmt.Fprintf(os.Stderr, "Uso: antiwave [opciones] <archivo.wav|archivo.mp3>\n\n")
+	fmt.Fprintf(os.Stderr, "Uso: antiwave [opciones] [archivo.wav|archivo.mp3]\n\n")
+	fmt.Fprintf(os.Stderr, "Sin archivo captura el audio del sistema (Spotify, navegador, etc.).\n\n")
 	fmt.Fprintf(os.Stderr, "Opciones:\n")
 	flag.PrintDefaults()
 }
 
 func main() {
-	silent := flag.Bool("silent", false, "no reproducir audio (avanza en tiempo real, solo visualiza)")
-	viewFlag := flag.String("view", "waveform", "vista inicial: waveform | spectrum")
+	silent := flag.Bool("silent", false, "modo archivo sin reproducir (avanza en tiempo real, solo visualiza)")
 	flag.Usage = usage
 	flag.Parse()
 
-	if flag.NArg() < 1 {
-		usage()
-		os.Exit(2)
-	}
-	path := flag.Arg(0)
+	enableVT()
 
-	dec, err := audio.Decode(path)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error decodificando %q: %v\n", path, err)
-		os.Exit(1)
-	}
-	if len(dec.Samples) == 0 {
-		fmt.Fprintf(os.Stderr, "error: %q no contiene muestras de audio\n", path)
-		os.Exit(1)
-	}
+	var src audio.Source
 
-	// Selección de reproductor (real o silencioso).
-	var pos audio.Positioner
-	if *silent {
-		pos = audio.NewSilentPlayer(dec)
-	} else {
-		p, err := audio.NewPlayer(dec)
+	if flag.NArg() >= 1 {
+		path := flag.Arg(0)
+		dec, err := audio.Decode(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  no se pudo abrir el dispositivo de audio (%v); continuando en modo silencioso.\n", err)
-			pos = audio.NewSilentPlayer(dec)
-		} else {
-			pos = p
+			fmt.Fprintf(os.Stderr, "[x] error decodificando %q: %v\n", path, err)
+			os.Exit(1)
 		}
+		if len(dec.Samples) == 0 {
+			fmt.Fprintf(os.Stderr, "[x] %q no contiene muestras de audio\n", path)
+			os.Exit(1)
+		}
+		name := filepath.Base(path)
+		if *silent {
+			src = audio.NewSilentSource(dec, name)
+		} else {
+			fsrc, err := audio.NewFileSource(dec, name)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[x] audio no disponible (%v); continuando en modo silencioso.\n", err)
+				src = audio.NewSilentSource(dec, name)
+			} else {
+				src = fsrc
+			}
+		}
+	} else {
+		cs, err := audio.NewCaptureSource()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[x] no se pudo abrir la captura del sistema: %v\n", err)
+			os.Exit(1)
+		}
+		src = cs
 	}
-	defer pos.Close()
-	pos.Play()
+	defer src.Close()
 
 	// Modo raw para leer teclas sin esperar Enter.
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
@@ -71,11 +79,7 @@ func main() {
 	defer fmt.Print("\x1b[?25h")  // restaurar cursor
 
 	keys := readKeys()
-
-	view := visual.Waveform
-	if *viewFlag == "spectrum" {
-		view = visual.Spectrum
-	}
+	renderer := visual.NewRenderer()
 
 	ticker := time.NewTicker(33 * time.Millisecond) // ~30 fps
 	defer ticker.Stop()
@@ -92,37 +96,47 @@ func main() {
 			case 'q', 3: // 'q' o Ctrl+C
 				return
 			case ' ':
-				if pos.IsPlaying() {
-					pos.Pause()
+				if src.Paused() {
+					src.Play()
 				} else {
-					pos.Play()
+					src.Pause()
 				}
 			case 'o':
-				pos.SetInverted(!pos.Inverted())
-			case 'b':
-				view = visual.Spectrum
-			case 'w':
-				view = visual.Waveform
+				src.SetInverted(!src.Inverted())
+			case '\t', 'n':
+				renderer.NextMode()
+			case 't':
+				renderer.NextTheme()
+			case 'm':
+				renderer.ToggleMono()
 			}
 
 		case <-ticker.C:
-			if pos.Done() {
+			if src.Done() {
 				return
 			}
 			w, h, err := term.GetSize(int(os.Stdout.Fd()))
 			if err != nil {
-				w, h = 80, 24 // fallback si no hay TTY (p. ej. redirigido)
+				w, h = 80, 24
 			}
-			params := visual.Params{
-				Samples:    dec.Samples,
-				SampleRate: dec.SampleRate,
-				Played:     pos.PlayedSamples(),
-				Inverted:   pos.Inverted(),
-				Paused:     !pos.IsPlaying(),
-				View:       view,
-				Total:      pos.TotalSamples(),
+			spc := src.SampleRate() / 50
+			if spc < 1 {
+				spc = 1
 			}
-			fmt.Print(visual.Render(params, w, h))
+			need := w * spc
+			if need < minWindow {
+				need = minWindow
+			}
+			frame := visual.Frame{
+				Samples:    src.Latest(need),
+				SampleRate: src.SampleRate(),
+				Inverted:   src.Inverted(),
+				Paused:     src.Paused(),
+				Name:       src.Name(),
+				Elapsed:    src.Elapsed(),
+				Total:      src.Total(),
+			}
+			fmt.Print(renderer.Render(frame, w, h))
 		}
 	}
 }

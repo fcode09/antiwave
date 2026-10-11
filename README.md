@@ -1,86 +1,87 @@
-# antiwave 🎧
+# antiwave
 
-Visualizador de música en la terminal, escrito en Go. Reproduce un archivo
-**WAV** o **MP3** y dibuja en vivo sus **ondas** (waveform) o sus **barras** de
-espectro (FFT), con un modo **"música opuesta"** (fase invertida + visual
-espejado).
+Visualizador de audio en la terminal, escrito en Go. Captura el audio del
+**sistema** (Spotify, YouTube, navegador…) o reproduce un archivo **WAV/MP3**, y
+lo dibuja en vivo con **múltiples modos de visualización** y **temas de color**.
+Todo con caracteres de terminal (box-drawing + bloques), sin emojis.
 
 ```
-▶ antiwave  |  ONDAS  |  0:03/0:06  |  fase: OPUESTA
- ▄▄▄▄▄▄▄  ···▄▄▄▄▄▄▄···▄▄▄▄▄▄▄···
- ███████  ···███████···███████···
- ·································
- ███████···███████···███████······
+┌ antiwave · [>] loopback (salida del sistema) · 48000Hz · CASCADA · fase:+ · 0:12/∞ ──┐
+█▓▒░ ░▒▓█ ▓▒░ ░▓█ ▒░█ ▓█                                                               │
+▒░ ░▓▒░ ▓█░ ░▒░ ▓░ ▒█                                                               │
+▓▒░ ▓█ ░▒░ ░▓ ▒░ █░▓▒                                                                │
+░▓█ ░▒▓ ▒█░ ▒░ ▓█ ░░                                                               │
+└─ [Tab]modo [t]tema:termal [m]mono [o]fase [espacio]pausa [q]salir · pico:-6dB dom:523Hz ─┘
 ```
 
-## Qué hace
-
-1. **Decodifica** el archivo a mono `float32` (WAV: PCM 8/16/24/32 bits y
-   float; MP3: vía `go-mp3`).
-2. **Reproduce** el audio por los parlantes (oto).
-3. Mientras suena, **dibuja en la terminal** (~30 fps):
-   - **`w` — Ondas**: osciloscopio scrolleante (amplitud vs. tiempo).
-   - **`b` — Barras**: espectro de frecuencias (FFT + ventana de Hann).
-4. Con `o` activas la **"música opuesta"**: invierte la fase (`sample × −1`)
-   y espeja el visual.
-
-> ⚠️ **Nota de audio**: la fase invertida **suena idéntica** al oído humano
-> (somos insensibles a la fase absoluta). La diferencia se ve claramente en la
-> consola (la onda queda "boca abajo"), pero el sonido no cambia.
-
-## Requisitos
-
-- Go 1.21+ (probado con 1.27).
-- Un dispositivo de audio para reproducir (opcional: usa `-silent` para
-  visualizar sin sonido).
-
-## Instalación y uso
+## Uso
 
 ```bash
-# Genera un WAV demo (arpegio de notas) si no tienes un archivo de audio
-make gen          # → samples/demo.wav
-
-# Reproduce y visualiza
-go run ./cmd/antiwave samples/demo.wav
-
-# O compila el binario
-make build
-./antiwave camino/al/archivo.mp3
+antiwave                 # captura el audio del sistema (lo que esté sonando)
+antiwave cancion.mp3     # reproduce y visualiza un archivo
+antiwave -silent cancion.wav   # archivo sin reproducir (avanza en tiempo real)
 ```
 
-Opciones:
+Binarios estáticos (sin dependencias) para Windows y Linux:
 
 ```bash
-./antiwave -silent -view spectrum cancion.wav   # solo visualiza (sin audio), vista de barras
+make release
+# → dist/antiwave.exe  (windows/amd64)
+# → dist/antiwave      (linux/amd64)
 ```
+
+## Modos de visualización
+
+Pulsa `Tab` para ciclar:
+
+| Modo | Descripción |
+|---|---|
+| **ONDAS** | Osciloscopio scrolleante con envolvente de pico |
+| **BARRAS** | Espectro de frecuencias (FFT) con tapas de pico |
+| **CASCADA** | Espectrograma (frecuencia × tiempo) en escala de intensidad |
+| **VU** | Medidores de nivel por bandas, con pico sostenido |
+| **X-Y** | Alcance de fase (Lissajous): correlación de la señal |
 
 ## Controles
 
-| Tecla      | Acción                          |
-|------------|---------------------------------|
-| `espacio`  | pausar / reanudar               |
-| `o`        | alternar música opuesta (fase)  |
-| `w`        | vista de ondas (waveform)       |
-| `b`        | vista de barras (espectro)      |
-| `q` / `Ctrl+C` | salir                      |
+| Tecla | Acción |
+|---|---|
+| `Tab` / `n` | cambiar modo |
+| `t` | cambiar tema de color |
+| `m` | monocromo on/off |
+| `o` | fase opuesta (espejo visual) |
+| `espacio` | pausar / reanudar |
+| `q` / `Ctrl+C` | salir |
+
+## Temas
+
+`mono` (por defecto), `termal`, `aurora`, `matriz`, `oceano`.
+
+## Cómo funciona
+
+- **Linux**: captura el monitor de PulseAudio/PipeWire (`jfreymuth/pulse`, puro Go).
+- **Windows**: captura WASAPI en modo loopback (`moutend/go-wca`, puro Go).
+- **Sin cgo**: el binario es estático y compila para ambos SO desde una máquina.
+
+> Nota: en captura, la "fase opuesta" (`o`) es solo un **espejo visual**; la fase
+> invertida no cambia lo que se oye (el oído es insensible a la fase absoluta).
 
 ## Estructura
 
 ```
 cmd/
-  antiwave/        # binario principal (decodifica → reproduce → dibuja)
-  genwav/          # genera un WAV demo para probar
+  antiwave/        # binario principal
+  genwav/          # genera un WAV demo
 internal/
-  audio/           # decodificación WAV/MP3 y reproducción (oto + modo silencioso)
-  visual/          # render en terminal: waveform y espectro FFT
+  audio/           # decodificación WAV/MP3, reproducción (oto) y captura por SO
+  visual/          # render: 5 modos, temas, HUD
 ```
 
-## Stack
+## Requisitos
 
-- [`ebitengine/oto/v3`](https://github.com/ebitengine/oto) — reproducción (sin cgo).
-- [`hajimehoshi/go-mp3`](https://github.com/hajimehoshi/go-mp3) — decodificación MP3.
-- [`madelynnblue/go-dsp/fft`](https://github.com/madelynnblue/go-dsp) — FFT para el espectro.
-- [`golang.org/x/term`](https://pkg.go.dev/golang.org/x/term) — modo raw y tamaño de terminal.
+- Go 1.21+ (probado con 1.27).
+- Linux: PulseAudio o PipeWire (con `pipewire-pulse`).
+- Windows: 10/11 (WASAPI; sin "Stereo Mix" necesario, usa loopback).
 
 ## Licencia
 
