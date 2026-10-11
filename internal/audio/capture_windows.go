@@ -17,29 +17,29 @@ const (
 	waveFormatPCM        = 0x0001
 	waveFormatIEEEFloat  = 0x0003
 	waveFormatExtensible = 0xFFFE
-	ksDataFormatIEEE     = 0x00000003 // primer uint32 del SubFormat GUID KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
+	ksDataFormatIEEE     = 0x00000003 // first uint32 of the KSDATAFORMAT_SUBTYPE_IEEE_FLOAT SubFormat GUID
 )
 
 func newSystemCapture(push func([]float32)) (*captureHandle, error) {
-	// Inicializa COM en MTA (proceso). Ignora el error: puede estar ya inicializado.
+	// Initialize COM in MTA. Ignore the error: it may already be initialized.
 	_ = ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED)
 
 	var mmde *wca.IMMDeviceEnumerator
 	if err := wca.CoCreateInstance(wca.CLSID_MMDeviceEnumerator, 0, wca.CLSCTX_ALL, wca.IID_IMMDeviceEnumerator, &mmde); err != nil {
-		return nil, fmt.Errorf("enumerador de dispositivos: %w", err)
+		return nil, fmt.Errorf("device enumerator: %w", err)
 	}
 
 	var mmd *wca.IMMDevice
 	if err := mmde.GetDefaultAudioEndpoint(wca.ERender, wca.EMultimedia, &mmd); err != nil {
 		mmde.Release()
-		return nil, fmt.Errorf("endpoint de render: %w", err)
+		return nil, fmt.Errorf("render endpoint: %w", err)
 	}
 
 	var ac *wca.IAudioClient
 	if err := mmd.Activate(wca.IID_IAudioClient, wca.CLSCTX_ALL, nil, &ac); err != nil {
 		mmd.Release()
 		mmde.Release()
-		return nil, fmt.Errorf("activar IAudioClient: %w", err)
+		return nil, fmt.Errorf("activating IAudioClient: %w", err)
 	}
 
 	var mix *wca.WAVEFORMATEX
@@ -47,7 +47,7 @@ func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 		ac.Release()
 		mmd.Release()
 		mmde.Release()
-		return nil, fmt.Errorf("formato de mezcla: %w", err)
+		return nil, fmt.Errorf("mix format: %w", err)
 	}
 
 	sampleRate, channels, isFloat, bytesPerSample := parseMixFormat(mix)
@@ -57,7 +57,7 @@ func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 		ac.Release()
 		mmd.Release()
 		mmde.Release()
-		return nil, fmt.Errorf("inicializar loopback: %w", err)
+		return nil, fmt.Errorf("initializing loopback: %w", err)
 	}
 	ole.CoTaskMemFree(uintptr(unsafe.Pointer(mix)))
 
@@ -66,7 +66,7 @@ func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 		ac.Release()
 		mmd.Release()
 		mmde.Release()
-		return nil, fmt.Errorf("servicio de captura: %w", err)
+		return nil, fmt.Errorf("capture service: %w", err)
 	}
 
 	if err := ac.Start(); err != nil {
@@ -74,7 +74,7 @@ func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 		ac.Release()
 		mmd.Release()
 		mmde.Release()
-		return nil, fmt.Errorf("iniciar captura: %w", err)
+		return nil, fmt.Errorf("starting capture: %w", err)
 	}
 
 	var running atomic.Bool
@@ -122,13 +122,13 @@ func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 
 	return &captureHandle{
 		sampleRate: sampleRate,
-		name:       "loopback (salida del sistema)",
+		name:       "loopback (system output)",
 		stop:       stop,
 	}, nil
 }
 
-// parseMixFormat extrae sampleRate, canales y formato de muestras del
-// WAVEFORMATEX (o WAVEFORMATEXTENSIBLE) de mezcla.
+// parseMixFormat extracts sample rate, channel count, and sample format from the
+// mix WAVEFORMATEX (or WAVEFORMATEXTENSIBLE).
 func parseMixFormat(mix *wca.WAVEFORMATEX) (sampleRate, channels int, isFloat bool, bytesPerSample int) {
 	sampleRate = int(mix.NSamplesPerSec)
 	channels = int(mix.NChannels)
@@ -145,7 +145,7 @@ func parseMixFormat(mix *wca.WAVEFORMATEX) (sampleRate, channels int, isFloat bo
 	return
 }
 
-// convertSamples convierte un bloque crudo de PCM intercalado a mono float32.
+// convertSamples converts a raw interleaved PCM block to mono float32.
 func convertSamples(data *byte, frames, channels int, isFloat bool, bytesPerSample int) []float32 {
 	total := frames * channels
 	raw := unsafe.Slice(data, total*bytesPerSample)

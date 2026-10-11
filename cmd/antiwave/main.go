@@ -1,8 +1,9 @@
-// antiwave: visualizador de audio en la terminal.
+// antiwave: a terminal audio visualizer.
 //
-// Sin argumentos captura el audio del sistema (loopback en Windows, monitor de
-// PulseAudio/PipeWire en Linux) y lo dibuja en vivo. Con un archivo WAV/MP3 lo
-// reproduce y visualiza. Múltiples modos, temas y caracteres de terminal.
+// Without arguments it captures the system audio (loopback on Windows, the
+// PulseAudio/PipeWire monitor on Linux) and renders it live. With a WAV/MP3
+// file it plays and visualizes it. Multiple modes, themes, and terminal
+// characters.
 package main
 
 import (
@@ -18,17 +19,17 @@ import (
 	"github.com/fquea/antiwave/internal/visual"
 )
 
-const minWindow = 2048 // al menos una FFT completa de muestras
+const minWindow = 2048 // at least one full FFT worth of samples
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Uso: antiwave [opciones] [archivo.wav|archivo.mp3]\n\n")
-	fmt.Fprintf(os.Stderr, "Sin archivo captura el audio del sistema (Spotify, navegador, etc.).\n\n")
-	fmt.Fprintf(os.Stderr, "Opciones:\n")
+	fmt.Fprintf(os.Stderr, "Usage: antiwave [options] [file.wav|file.mp3]\n\n")
+	fmt.Fprintf(os.Stderr, "Without a file it captures the system audio (Spotify, browser, etc.).\n\n")
+	fmt.Fprintf(os.Stderr, "Options:\n")
 	flag.PrintDefaults()
 }
 
 func main() {
-	silent := flag.Bool("silent", false, "modo archivo sin reproducir (avanza en tiempo real, solo visualiza)")
+	silent := flag.Bool("silent", false, "file mode without playback (advances in real time, visualizes only)")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -40,11 +41,11 @@ func main() {
 		path := flag.Arg(0)
 		dec, err := audio.Decode(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[x] error decodificando %q: %v\n", path, err)
+			fmt.Fprintf(os.Stderr, "[x] error decoding %q: %v\n", path, err)
 			os.Exit(1)
 		}
 		if len(dec.Samples) == 0 {
-			fmt.Fprintf(os.Stderr, "[x] %q no contiene muestras de audio\n", path)
+			fmt.Fprintf(os.Stderr, "[x] %q contains no audio samples\n", path)
 			os.Exit(1)
 		}
 		name := filepath.Base(path)
@@ -53,7 +54,7 @@ func main() {
 		} else {
 			fsrc, err := audio.NewFileSource(dec, name)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "[x] audio no disponible (%v); continuando en modo silencioso.\n", err)
+				fmt.Fprintf(os.Stderr, "[x] audio unavailable (%v); continuing in silent mode.\n", err)
 				src = audio.NewSilentSource(dec, name)
 			} else {
 				src = fsrc
@@ -62,21 +63,21 @@ func main() {
 	} else {
 		cs, err := audio.NewCaptureSource()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[x] no se pudo abrir la captura del sistema: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[x] could not open system audio capture: %v\n", err)
 			os.Exit(1)
 		}
 		src = cs
 	}
 	defer src.Close()
 
-	// Modo raw para leer teclas sin esperar Enter.
+	// Raw mode to read keys without waiting for Enter.
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err == nil {
 		defer term.Restore(int(os.Stdin.Fd()), oldState)
 	}
 
-	fmt.Print("\x1b[?25l\x1b[2J") // ocultar cursor y limpiar pantalla
-	defer fmt.Print("\x1b[?25h")  // restaurar cursor
+	fmt.Print("\x1b[?25l\x1b[2J") // hide cursor and clear screen
+	defer fmt.Print("\x1b[?25h")  // restore cursor
 
 	keys := readKeys()
 	renderer := visual.NewRenderer()
@@ -88,12 +89,12 @@ func main() {
 		select {
 		case k, ok := <-keys:
 			if !ok {
-				// stdin cerrado (no interactivo): seguir sin entrada de teclas.
+				// stdin closed (non-interactive): keep running without key input.
 				keys = nil
 				continue
 			}
 			switch k {
-			case 'q', 3: // 'q' o Ctrl+C
+			case 'q', 3: // 'q' or Ctrl+C
 				return
 			case ' ':
 				if src.Paused() {
@@ -141,7 +142,7 @@ func main() {
 	}
 }
 
-// readKeys lee stdin byte a byte y envía cada tecla por el canal.
+// readKeys reads stdin one byte at a time and sends each key over the channel.
 func readKeys() <-chan rune {
 	ch := make(chan rune)
 	go func() {

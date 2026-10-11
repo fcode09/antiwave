@@ -1,5 +1,5 @@
-// genwav genera un WAV demo (mono, PCM 16-bit) con un arpegio de varias notas
-// para probar antiwave sin necesitar un archivo de audio externo.
+// genwav generates a demo WAV (mono, 16-bit PCM) with an arpeggio of several
+// notes, so antiwave can be tested without an external audio file.
 package main
 
 import (
@@ -11,14 +11,14 @@ import (
 )
 
 func main() {
-	out := flag.String("o", "demo.wav", "archivo de salida")
-	sr := flag.Int("sr", 44100, "frecuencia de muestreo")
-	dur := flag.Float64("dur", 6.0, "duración en segundos")
+	out := flag.String("o", "demo.wav", "output file")
+	sr := flag.Int("sr", 44100, "sample rate")
+	dur := flag.Float64("dur", 6.0, "duration in seconds")
 	flag.Parse()
 
 	n := int(float64(*sr) * *dur)
 
-	// Melodía: escala ascendente y descendente (arpegio de Do mayor).
+	// Melody: ascending and descending arpeggio (C major).
 	notes := []float64{
 		261.63, 329.63, 392.00, 523.25, // C4 E4 G4 C5
 		659.25, 523.25, 392.00, 329.63, // E5 C5 G4 E4
@@ -34,9 +34,9 @@ func main() {
 			idx = len(notes) - 1
 		}
 		f := notes[idx]
-		lt := t - float64(idx)*noteDur // tiempo local dentro de la nota
+		lt := t - float64(idx)*noteDur // local time within the note
 
-		// Envolvente: ataque rápido + decaimiento exponencial.
+		// Envelope: fast attack + exponential decay.
 		env := math.Min(1, lt/0.02) * math.Exp(-3*lt)
 
 		v := env * (0.6*math.Sin(2*math.Pi*f*t) +
@@ -49,7 +49,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("escrito %s (%d muestras, %.1fs, %d Hz)\n", *out, n, *dur, *sr)
+	fmt.Printf("wrote %s (%d samples, %.1fs, %d Hz)\n", *out, n, *dur, *sr)
 }
 
 func writeWav(path string, sampleRate int, samples []int16) error {
@@ -69,12 +69,12 @@ func writeWav(path string, sampleRate int, samples []int16) error {
 
 	write := func(v any) error { return binary.Write(f, binary.LittleEndian, v) }
 
-	// Cabecera RIFF.
+	// RIFF header.
 	f.WriteString("RIFF")
 	write(uint32(36 + dataSize))
 	f.WriteString("WAVE")
 
-	// Chunk fmt.
+	// fmt chunk.
 	f.WriteString("fmt ")
 	write(uint32(16))
 	write(uint16(1)) // PCM
@@ -84,7 +84,7 @@ func writeWav(path string, sampleRate int, samples []int16) error {
 	write(uint16(blockAlign))
 	write(uint16(bits))
 
-	// Chunk data.
+	// data chunk.
 	f.WriteString("data")
 	write(uint32(dataSize))
 	return write(samples)

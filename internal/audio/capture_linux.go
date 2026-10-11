@@ -11,13 +11,13 @@ import (
 func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 	c, err := pulse.NewClient(pulse.ClientApplicationName("antiwave"))
 	if err != nil {
-		return nil, fmt.Errorf("conectar a PulseAudio/PipeWire: %w", err)
+		return nil, fmt.Errorf("connecting to PulseAudio/PipeWire: %w", err)
 	}
 
 	sink, err := c.DefaultSink()
 	if err != nil {
 		c.Close()
-		return nil, fmt.Errorf("sink por defecto: %w", err)
+		return nil, fmt.Errorf("default sink: %w", err)
 	}
 
 	sr := sink.SampleRate()
@@ -37,10 +37,10 @@ func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 	)
 	if err != nil {
 		c.Close()
-		return nil, fmt.Errorf("abrir flujo de grabación: %w", err)
+		return nil, fmt.Errorf("opening record stream: %w", err)
 	}
 
-	// Usar la frecuencia negociada real.
+	// Use the actual negotiated rate.
 	actualRate := stream.SampleRate()
 	if actualRate <= 0 {
 		actualRate = sr

@@ -8,8 +8,8 @@ import (
 	"os"
 )
 
-// decodeWAV parsea un archivo WAV PCM (8/16/24/32 bits) o IEEE float (32/64)
-// y lo convierte a mono float32.
+// decodeWAV parses a WAV file (PCM 8/16/24/32 bits or IEEE float 32/64) and
+// converts it to mono float32.
 func decodeWAV(path string) (*Decoded, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -29,7 +29,7 @@ func decodeWAV(path string) (*Decoded, error) {
 		return nil, err
 	}
 	if string(riffID[:]) != "RIFF" || string(waveID[:]) != "WAVE" {
-		return nil, fmt.Errorf("no es un WAV válido (falta cabecera RIFF/WAVE)")
+		return nil, fmt.Errorf("not a valid WAV (missing RIFF/WAVE header)")
 	}
 
 	var (
@@ -70,7 +70,7 @@ func decodeWAV(path string) (*Decoded, error) {
 			numChannels = int(hdr.NumChannels)
 			sampleRate = int(hdr.SampleRate)
 			bitsPerSample = int(hdr.BitsPerSample)
-			// Ignorar bytes extra del chunk fmt (WAVE_FORMAT_EXTENSIBLE, cbSize, ...).
+			// Skip extra fmt chunk bytes (WAVE_FORMAT_EXTENSIBLE, cbSize, ...).
 			if chunkSize > 16 {
 				if _, err := io.CopyN(io.Discard, f, int64(chunkSize-16)); err != nil {
 					return nil, err
@@ -87,7 +87,7 @@ func decodeWAV(path string) (*Decoded, error) {
 			}
 		}
 
-		// Los chunks WAV están alineados a palabra (pad byte si el tamaño es impar).
+		// WAV chunks are word-aligned (pad byte if the size is odd).
 		if chunkSize%2 == 1 {
 			if _, err := io.CopyN(io.Discard, f, 1); err != nil {
 				return nil, err
@@ -96,12 +96,12 @@ func decodeWAV(path string) (*Decoded, error) {
 	}
 
 	if sampleRate == 0 || numChannels == 0 || bitsPerSample == 0 || len(data) == 0 {
-		return nil, fmt.Errorf("WAV incompleto o sin datos de audio")
+		return nil, fmt.Errorf("incomplete WAV or no audio data")
 	}
 
 	bytesPerSample := bitsPerSample / 8
 	if bytesPerSample == 0 {
-		return nil, fmt.Errorf("bits por muestra inválidos: %d", bitsPerSample)
+		return nil, fmt.Errorf("invalid bits per sample: %d", bitsPerSample)
 	}
 	blockAlign := numChannels * bytesPerSample
 	frames := len(data) / blockAlign
@@ -120,7 +120,7 @@ func decodeWAV(path string) (*Decoded, error) {
 	return &Decoded{Samples: samples, SampleRate: sampleRate}, nil
 }
 
-// sampleToFloat convierte una muestra cruda a float64 en [-1, 1].
+// sampleToFloat converts a raw sample to a float64 in [-1, 1].
 func sampleToFloat(b []byte, format uint16, bits int) float64 {
 	// IEEE float
 	if format == 3 {
@@ -131,13 +131,13 @@ func sampleToFloat(b []byte, format uint16, bits int) float64 {
 			return math.Float64frombits(binary.LittleEndian.Uint64(b))
 		}
 	}
-	// PCM entero
+	// Integer PCM
 	switch bits {
 	case 8: // unsigned
 		return float64(int(b[0])-128) / 128.0
 	case 16:
 		return float64(int16(binary.LittleEndian.Uint16(b))) / 32768.0
-	case 24: // signed little-endian de 24 bits
+	case 24: // signed 24-bit little-endian
 		u := uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16
 		if u&0x800000 != 0 {
 			u |= 0xFF000000

@@ -1,27 +1,27 @@
 .PHONY: build run gen demo release tidy vet test clean
 
-# Compila el binario (para el SO actual) en ./antiwave
+# Build the binary (for the current OS) as ./antiwave
 build:
 	go build -o antiwave ./cmd/antiwave
 
-# Compila y ejecuta con un archivo de audio
-# Uso: make run AUDIO=ruta/al/archivo.wav
+# Build and run with an audio file
+# Usage: make run AUDIO=path/to/file.wav
 run: build
 	./antiwave $(AUDIO)
 
-# Captura el audio del sistema y lo visualiza
+# Capture the system audio and visualize it
 capture: build
 	./antiwave
 
-# Genera un WAV demo (arpegio de notas) en samples/demo.wav
+# Generate a demo WAV (note arpeggio) at samples/demo.wav
 gen:
 	go run ./cmd/genwav -o samples/demo.wav
 
-# Genera el demo y lo reproduce
+# Generate the demo and play it
 demo: gen
 	go run ./cmd/antiwave samples/demo.wav
 
-# Compila binarios estáticos para Windows y Linux en dist/
+# Build static binaries for Windows and Linux under dist/
 release:
 	mkdir -p dist
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/antiwave.exe ./cmd/antiwave

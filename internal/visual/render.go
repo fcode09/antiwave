@@ -1,6 +1,6 @@
-// Package visual dibuja la música en la terminal: múltiples modos de
-// visualización (ondas, barras, cascada, VU, X-Y), temas de color y un HUD con
-// caracteres de terminal (box-drawing + bloques, sin emojis).
+// Package visual renders music in the terminal: multiple visualization modes
+// (wave, bars, waterfall, VU, X-Y), color themes, and a HUD using terminal
+// characters (box-drawing + blocks), no emojis.
 package visual
 
 import (
@@ -16,11 +16,11 @@ import (
 	"github.com/madelynnblue/go-dsp/fft"
 )
 
-// fftSize es el tamaño de la FFT usada por los modos espectrales.
+// fftSize is the FFT size used by the spectral modes.
 const fftSize = 2048
 
 // ---------------------------------------------------------------------------
-// Glifos de terminal (sin emojis).
+// Terminal glyphs (no emojis).
 // ---------------------------------------------------------------------------
 
 const (
@@ -32,7 +32,7 @@ const (
 
 var rampRunes = []rune(ramp)
 
-// cell es una celda de la terminal: una runa y un color ANSI-256 (0 = default).
+// cell is one terminal cell: a rune plus an optional ANSI-256 color (0 = default).
 type cell struct {
 	r rune
 	c int
@@ -52,7 +52,7 @@ func rampRune(v float64) rune {
 }
 
 // ---------------------------------------------------------------------------
-// Modos de visualización.
+// Visualization modes.
 // ---------------------------------------------------------------------------
 
 type Mode int
@@ -68,11 +68,11 @@ const (
 func (m Mode) String() string {
 	switch m {
 	case ModeWaveform:
-		return "ONDAS"
+		return "WAVE"
 	case ModeSpectrum:
-		return "BARRAS"
+		return "BARS"
 	case ModeWaterfall:
-		return "CASCADA"
+		return "WATERFALL"
 	case ModeVU:
 		return "VU"
 	case ModeXY:
@@ -82,12 +82,12 @@ func (m Mode) String() string {
 }
 
 // ---------------------------------------------------------------------------
-// Temas de color.
+// Color themes.
 // ---------------------------------------------------------------------------
 
 type Theme struct {
 	Name   string
-	Colors []int // índices ANSI-256, de baja a alta intensidad
+	Colors []int // ANSI-256 indices, low to high intensity
 }
 
 var Themes = []Theme{
@@ -112,14 +112,14 @@ func (t Theme) colorIndex(v float64) int {
 }
 
 // ---------------------------------------------------------------------------
-// Renderer (estado persistente entre frames).
+// Renderer (persistent state across frames).
 // ---------------------------------------------------------------------------
 
 type Renderer struct {
 	mode    Mode
 	theme   int
 	mono    bool
-	fall    [][]float32 // historial de la cascada (nuevo primero)
+	fall    [][]float32 // waterfall history (newest first)
 	fallW   int
 	vuPeaks []float32
 }
@@ -146,8 +146,8 @@ func (r *Renderer) ThemeName() string {
 
 func (r *Renderer) themeObj() Theme { return Themes[r.theme] }
 
-// shade convierte una intensidad [0,1] en una celda: rampa de bloques (mono) o
-// bloque con color. Pensado para mapas de calor (cascada).
+// shade maps an intensity [0,1] to a cell: block ramp (mono) or a colored
+// block. Intended for heatmaps (waterfall).
 func (r *Renderer) shade(v float64) cell {
 	if v < 0 {
 		v = 0
@@ -160,8 +160,8 @@ func (r *Renderer) shade(v float64) cell {
 	return cell{r: blockFull, c: r.themeObj().colorIndex(v)}
 }
 
-// bar devuelve una celda de barra sólida: bloque lleno (la altura transmite la
-// amplitud), con color según v en los temas de color.
+// bar returns a solid bar cell: full block (height conveys amplitude), colored
+// by v in color themes.
 func (r *Renderer) bar(v float64) cell {
 	if v < 0 {
 		v = 0
@@ -175,7 +175,7 @@ func (r *Renderer) bar(v float64) cell {
 }
 
 // ---------------------------------------------------------------------------
-// Frame: entrada de cada frame.
+// Frame: per-frame input.
 // ---------------------------------------------------------------------------
 
 type Frame struct {
@@ -256,8 +256,8 @@ func (r *Renderer) header(f Frame) string {
 	if f.Total == 0 {
 		total = "∞"
 	}
-	mode := colorStr("1;36", r.mode.String()) // cian
-	return fmt.Sprintf(" antiwave · [%s] %s · %dHz · %s · fase:%s · %s/%s ",
+	mode := colorStr("1;36", r.mode.String()) // cyan
+	return fmt.Sprintf(" antiwave · [%s] %s · %dHz · %s · phase:%s · %s/%s ",
 		state, f.Name, f.SampleRate, mode, phase, formatDur(f.Elapsed), total)
 }
 
@@ -267,12 +267,12 @@ func (r *Renderer) footer(f Frame, peak float32, dom float64) string {
 		domStr = fmt.Sprintf("%.0fHz", dom)
 	}
 	peakStr := toDB(peak)
-	return fmt.Sprintf(" [Tab]modo [t]tema:%s [m]mono [o]fase [espacio]pausa [q]salir · pico:%s dom:%s ",
+	return fmt.Sprintf(" [Tab]mode [t]theme:%s [m]mono [o]phase [space]pause [q]quit · peak:%s dom:%s ",
 		r.ThemeName(), peakStr, domStr)
 }
 
 // ---------------------------------------------------------------------------
-// Helpers de render.
+// Rendering helpers.
 // ---------------------------------------------------------------------------
 
 func makeGrid(h, w int) [][]cell {
@@ -332,7 +332,7 @@ func formatDur(d time.Duration) string {
 }
 
 // ---------------------------------------------------------------------------
-// Análisis de señal.
+// Signal analysis.
 // ---------------------------------------------------------------------------
 
 func computeSpectrum(samples []float32, inverted bool) []float64 {

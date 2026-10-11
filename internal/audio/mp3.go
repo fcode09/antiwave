@@ -8,8 +8,8 @@ import (
 	"github.com/hajimehoshi/go-mp3"
 )
 
-// decodeMP3 decodifica un MP3 a mono float32.
-// go-mp3 entrega PCM de 16 bits little-endian, siempre estéreo (2 canales).
+// decodeMP3 decodes an MP3 to mono float32.
+// go-mp3 always outputs 16-bit little-endian stereo (2 channels) PCM.
 func decodeMP3(path string) (*Decoded, error) {
 	f, err := os.Open(path)
 	if err != nil {

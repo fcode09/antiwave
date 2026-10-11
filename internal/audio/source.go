@@ -9,12 +9,12 @@ import (
 	"github.com/ebitengine/oto/v3"
 )
 
-// Source proporciona muestras de audio (mono float32) para visualizar, ya sea
-// desde un archivo en reproducción o desde la captura del sistema.
+// Source provides mono float32 audio samples for visualization, either from a
+// file being played back or from live system capture.
 type Source interface {
 	SampleRate() int
-	// Latest devuelve hasta max de las muestras más recientes (más antigua
-	// primero). Puede devolver menos si aún no hay suficientes.
+	// Latest returns up to max of the most recent samples (oldest first).
+	// It may return fewer if not enough are available yet.
 	Latest(max int) []float32
 	Inverted() bool
 	SetInverted(bool)
@@ -23,21 +23,21 @@ type Source interface {
 	Play()
 	Done() bool
 	Close()
-	// Name es un nombre legible para el HUD.
+	// Name is a human-readable name for the HUD.
 	Name() string
-	// Elapsed es el tiempo reproducido/capturado. Total==0 indica fuente en vivo.
+	// Elapsed is the played/captured time. Total==0 means a live source.
 	Elapsed() time.Duration
 	Total() time.Duration
 }
 
 // ---------------------------------------------------------------------------
-// sampleReader: alimenta a oto, aplica inversión de fase y rastrea posición.
+// sampleReader: feeds oto, applies phase inversion, and tracks position.
 // ---------------------------------------------------------------------------
 
 type sampleReader struct {
 	samples    []float32
 	totalBytes int64
-	served     atomic.Int64 // bytes ya servidos al player
+	served     atomic.Int64 // bytes already handed to the player
 	inverted   atomic.Bool
 }
 
@@ -73,7 +73,7 @@ func (r *sampleReader) Read(p []byte) (int, error) {
 }
 
 // ---------------------------------------------------------------------------
-// FileSource: reproduce un archivo decodificado vía oto.
+// FileSource: plays a decoded file through oto.
 // ---------------------------------------------------------------------------
 
 type FileSource struct {
@@ -160,7 +160,7 @@ func (f *FileSource) Total() time.Duration {
 }
 
 // ---------------------------------------------------------------------------
-// SilentSource: avanza por las muestras en tiempo real sin reproducir.
+// SilentSource: advances through the samples in real time without playback.
 // ---------------------------------------------------------------------------
 
 type SilentSource struct {

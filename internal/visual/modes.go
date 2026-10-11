@@ -4,7 +4,7 @@ import (
 	"math"
 )
 
-// rowFor mapea una amplitud [-1,1] a una fila (0 arriba, h-1 abajo).
+// rowFor maps an amplitude [-1,1] to a row (0 at the top, h-1 at the bottom).
 func rowFor(a float32, h int) int {
 	n := float64(a+1) / 2.0
 	r := int(math.Round(n * float64(h-1)))
@@ -23,8 +23,8 @@ func minMax(s []float32, a, b int) (float32, float32) {
 	return mn, mx
 }
 
-// freqBins devuelve el rango de bins [b0,b1) para una columna c de w, en escala
-// logarítmica de frecuencias.
+// freqBins returns the [b0,b1) bin range for column c of w, on a logarithmic
+// frequency scale.
 func freqBins(c, w, half, sampleRate int) (int, int) {
 	fmin, fmax := 20.0, float64(sampleRate)/2.0
 	if fmax <= fmin {
@@ -47,7 +47,7 @@ func freqBins(c, w, half, sampleRate int) (int, int) {
 }
 
 // ---------------------------------------------------------------------------
-// M1 · Ondas (osciloscopio con envolvente de pico).
+// M1 · Wave (scrolling oscilloscope with peak envelope).
 // ---------------------------------------------------------------------------
 
 func (r *Renderer) drawWaveform(grid [][]cell, f Frame, w, h int) {
@@ -82,10 +82,10 @@ func (r *Renderer) drawWaveform(grid [][]cell, f Frame, w, h int) {
 		}
 		for row := top; row <= bot; row++ {
 			if row >= 0 && row < h {
-				grid[row][c] = r.shade(1)
+				grid[row][c] = r.bar(1)
 			}
 		}
-		// Tapa de pico en el máximo.
+		// Peak cap at the maximum.
 		if top >= 0 && top < h {
 			grid[top][c] = cell{r: peakGlyph}
 		}
@@ -93,7 +93,7 @@ func (r *Renderer) drawWaveform(grid [][]cell, f Frame, w, h int) {
 }
 
 // ---------------------------------------------------------------------------
-// M2 · Barras (espectro FFT con tapas de pico).
+// M2 · Bars (FFT spectrum with peak caps).
 // ---------------------------------------------------------------------------
 
 func (r *Renderer) drawSpectrum(grid [][]cell, f Frame, mags []float64, w, h int) {
@@ -123,7 +123,7 @@ func (r *Renderer) drawSpectrum(grid [][]cell, f Frame, mags []float64, w, h int
 }
 
 // ---------------------------------------------------------------------------
-// M3 · Cascada / espectrograma (frecuencia × tiempo).
+// M3 · Waterfall / spectrogram (frequency × time).
 // ---------------------------------------------------------------------------
 
 func (r *Renderer) drawWaterfall(grid [][]cell, f Frame, mags []float64, w, h int) {
@@ -163,7 +163,7 @@ func (r *Renderer) drawWaterfall(grid [][]cell, f Frame, mags []float64, w, h in
 }
 
 // ---------------------------------------------------------------------------
-// M4 · Medidores VU (consola de mezcla, con pico sostenido).
+// M4 · VU meters (mixing console, with peak hold).
 // ---------------------------------------------------------------------------
 
 const vuBands = 12
@@ -215,7 +215,7 @@ func (r *Renderer) drawVU(grid [][]cell, f Frame, mags []float64, w, h int) {
 }
 
 // ---------------------------------------------------------------------------
-// M5 · Alcance X-Y (Lissajous): muestra la correlación/fase de la señal.
+// M5 · X-Y scope (Lissajous): shows the signal's correlation/phase.
 // ---------------------------------------------------------------------------
 
 func (r *Renderer) drawXY(grid [][]cell, f Frame, w, h int) {
@@ -247,7 +247,7 @@ func (r *Renderer) drawXY(grid [][]cell, f Frame, w, h int) {
 			row = h - 1
 		}
 		if grid[row][col].r == ' ' {
-			grid[row][col] = r.shade(1)
+			grid[row][col] = r.bar(1)
 		}
 	}
 }

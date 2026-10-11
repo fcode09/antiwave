@@ -6,19 +6,19 @@ import (
 	"time"
 )
 
-// captureHandle es lo que devuelve la implementación específica de cada SO.
+// captureHandle is returned by each OS-specific implementation.
 type captureHandle struct {
 	sampleRate int
 	name       string
 	stop       func()
 }
 
-// newSystemCapture (definida por SO en capture_linux.go / capture_windows.go /
-// capture_unsupported.go) abre el dispositivo de captura del sistema y empieza
-// a llamar a push con las muestras mono float32.
+// newSystemCapture (defined per OS in capture_linux.go / capture_windows.go /
+// capture_unsupported.go) opens the system capture device and starts calling
+// push with mono float32 samples.
 
 // ---------------------------------------------------------------------------
-// ringBuffer: ventana deslizante de las muestras más recientes.
+// ringBuffer: a sliding window of the most recent samples.
 // ---------------------------------------------------------------------------
 
 type ringBuffer struct {
@@ -56,7 +56,7 @@ func (r *ringBuffer) latest(max int) []float32 {
 }
 
 // ---------------------------------------------------------------------------
-// CaptureSource: Source alimentado por la captura del sistema.
+// CaptureSource: a Source fed by system capture.
 // ---------------------------------------------------------------------------
 
 type CaptureSource struct {
@@ -65,7 +65,7 @@ type CaptureSource struct {
 	name       string
 	inverted   atomic.Bool
 	paused     atomic.Bool
-	pushed     atomic.Int64 // muestras capturadas (para el tiempo transcurrido)
+	pushed     atomic.Int64 // samples captured (for elapsed time)
 	stopFn     func()
 	closed     atomic.Bool
 }

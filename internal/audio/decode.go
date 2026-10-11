@@ -1,5 +1,5 @@
-// Package audio decodifica archivos de audio (WAV/MP3) y abstrae la
-// reproducción (real por parlantes o "silenciosa" para visualizar sin sonido).
+// Package audio decodes audio files (WAV/MP3) and abstracts playback (real via
+// speakers or "silent" for headless visualization), plus system audio capture.
 package audio
 
 import (
@@ -8,15 +8,14 @@ import (
 	"strings"
 )
 
-// Decoded contiene las muestras de audio en mono float32 dentro de [-1, 1]
-// y la frecuencia de muestreo original.
+// Decoded holds mono float32 samples in [-1, 1] and the original sample rate.
 type Decoded struct {
 	Samples    []float32
 	SampleRate int
 }
 
-// Decode abre el archivo en path y lo decodifica a mono float32.
-// Soportados: .wav y .mp3.
+// Decode opens the file at path and decodes it to mono float32.
+// Supported formats: .wav and .mp3.
 func Decode(path string) (*Decoded, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
@@ -25,6 +24,6 @@ func Decode(path string) (*Decoded, error) {
 	case ".mp3":
 		return decodeMP3(path)
 	default:
-		return nil, fmt.Errorf("formato no soportado: %q (solo .wav y .mp3)", ext)
+		return nil, fmt.Errorf("unsupported format: %q (only .wav and .mp3)", ext)
 	}
 }

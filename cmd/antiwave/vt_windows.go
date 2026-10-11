@@ -8,8 +8,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// enableVT activa el procesamiento de secuencias ANSI (Virtual Terminal) en la
-// consola de Windows, para que el color y el cursor funcionen en cmd/conhost.
+// enableVT enables ANSI (Virtual Terminal) processing on the Windows console,
+// so color and cursor sequences work in cmd/conhost.
 func enableVT() {
 	h := windows.Handle(os.Stdout.Fd())
 	var mode uint32

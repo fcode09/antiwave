@@ -34,10 +34,10 @@ func TestRenderAllModes(t *testing.T) {
 		r.mode = m
 		out := r.Render(frame, 80, 24)
 		if !strings.Contains(out, "┌") || !strings.Contains(out, "└") {
-			t.Errorf("modo %v: falta el marco del HUD", m)
+			t.Errorf("mode %v: missing HUD frame", m)
 		}
 		if !strings.ContainsAny(out, "▁▂▃▄▅▆▇█") {
-			t.Errorf("modo %v: no dibuja bloques", m)
+			t.Errorf("mode %v: does not draw blocks", m)
 		}
 	}
 }
@@ -48,7 +48,7 @@ func TestRenderColorTheme(t *testing.T) {
 	r.theme = 1 // termal
 	out := r.Render(testFrame(), 80, 24)
 	if !strings.Contains(out, "\x1b[38;5;") {
-		t.Errorf("el tema de color debería emitir secuencias ANSI de color")
+		t.Errorf("color theme should emit ANSI color sequences")
 	}
 }
 
@@ -57,7 +57,7 @@ func TestRenderInverted(t *testing.T) {
 	frame := testFrame()
 	frame.Inverted = true
 	out := r.Render(frame, 80, 24)
-	if !strings.Contains(out, "fase:~") {
-		t.Errorf("el HUD debería indicar fase opuesta (~)")
+	if !strings.Contains(out, "phase:~") {
+		t.Errorf("HUD should indicate inverted phase (~)")
 	}
 }

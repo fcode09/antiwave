@@ -2,5 +2,5 @@
 
 package main
 
-// enableVT es un no-op fuera de Windows.
+// enableVT is a no-op outside Windows.
 func enableVT() {}
