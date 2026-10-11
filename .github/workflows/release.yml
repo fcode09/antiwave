@@ -1,0 +1,110 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Test and vet
+        run: |
+          go vet ./...
+          go test ./...
+      - name: Build Linux binary
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT" \
+            -o dist/antiwave ./cmd/antiwave
+      - name: Package tarball
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p stage/antiwave
+          cp dist/antiwave stage/antiwave/antiwave
+          cp README.md LICENSE stage/antiwave/
+          tar -czf "antiwave_${VERSION}_linux_amd64.tar.gz" -C stage antiwave
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-tarball
+          path: antiwave_*_linux_amd64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Build Windows binary
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+            -trimpath -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT" \
+            -o packaging/windows/antiwave.exe ./cmd/antiwave
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Build installer
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:VERSION" packaging\windows\antiwave.iss
+      - name: Upload installer
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path packaging\windows\Output -Filter *.exe | ForEach-Object {
+            Write-Host "Installer: $($_.FullName)"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: packaging/windows/Output/*.exe
+          if-no-files-found: error
+
+  publish:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f -name 'antiwave*' -exec sha256sum {} \; | sort > checksums.txt
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/antiwave*
+            artifacts/checksums.txt
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-alpha') || contains(github.ref, '-beta') }}

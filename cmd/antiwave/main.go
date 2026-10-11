@@ -2,7 +2,7 @@
 //
 // Without arguments it captures the system audio (loopback on Windows, the
 // PulseAudio/PipeWire monitor on Linux) and renders it live. With a WAV/MP3
-// file it plays and visualizes it. Eight visualization modes, color themes,
+// file it plays and visualizes it. Eleven visualization modes, color themes,
 // and an immersive full-screen mode.
 package main
 
@@ -21,6 +21,14 @@ import (
 
 const minWindow = 2048 // at least one full FFT worth of samples
 
+// version and commit are overridden at build time via:
+//
+//	go build -ldflags "-X main.version=v0.1.0 -X main.commit=abc1234"
+var (
+	version = "dev"
+	commit  = "unknown"
+)
+
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: antiwave [options] [file.wav|file.mp3]\n\n")
 	fmt.Fprintf(os.Stderr, "Without a file it captures the system audio (Spotify, browser, etc.).\n\n")
@@ -35,8 +43,14 @@ func main() {
 	themeFlag := flag.String("theme", "aurora", "initial theme: mono|aurora|ocean|ember|phosphor|ion|ghost|amethyst")
 	mono := flag.Bool("mono", false, "start in monochrome mode")
 	fps := flag.Int("fps", 60, "target frames per second (30 or 60)")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Usage = usage
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("antiwave %s (%s)\n", version, commit)
+		return
+	}
 
 	if _, ok := visual.ModeByName(*modeFlag); !ok {
 		fmt.Fprintf(os.Stderr, "[x] unknown mode %q (see --help)\n", *modeFlag)

@@ -33,6 +33,38 @@ make release
 # → dist/antiwave      (linux/amd64)
 ```
 
+## Download
+
+Prebuilt binaries are published on
+[GitHub Releases](https://github.com/fcode09/antiwave/releases) for each
+version tag.
+
+- **Windows**: `antiwave_<version>_windows_amd64_setup.exe` — an installer that
+  installs `antiwave.exe` and adds it to your `PATH`.
+- **Linux**: `antiwave_<version>_linux_amd64.tar.gz` — extract and place the
+  `antiwave` binary on your `PATH`.
+
+### Windows
+
+1. Download and run `antiwave_<version>_windows_amd64_setup.exe`.
+2. Open a **new** PowerShell/terminal window.
+3. Run:
+
+   ```powershell
+   antiwave --version
+   antiwave
+   ```
+
+### Linux
+
+```bash
+tar -xzf antiwave_<version>_linux_amd64.tar.gz
+sudo install -m 0755 antiwave/antiwave /usr/local/bin/antiwave
+antiwave
+```
+
+> Requires PulseAudio or PipeWire with `pipewire-pulse`.
+
 ## Building from source
 
 Requires Go 1.27+.
@@ -55,6 +87,7 @@ make release
 | `--theme` | `aurora` (default) · `ocean` · `ember` · `phosphor` · `ion` · `ghost` · `amethyst` · `mono` |
 | `--mono` | start in monochrome |
 | `--fps` | target frame rate (30 or 60, default 60) |
+| `--version` | print version and exit |
 
 ## Visualization modes
 
