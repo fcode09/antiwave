@@ -1,6 +1,6 @@
 # Binaries
-antiwave
-antiwave.exe
+/antiwave
+/antiwave.exe
 *.exe
 
 # Go
