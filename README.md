@@ -1,15 +1,17 @@
 # antiwave
 
-A terminal audio visualizer written in Go. It captures the **system audio**
-(Spotify, browser, whatever is playing) or plays a **WAV/MP3** file, and renders
-it live with **multiple visualization modes** and **color themes** — all using
-terminal characters (box-drawing + blocks), no emojis.
+A modern terminal audio visualizer written in Go. It captures the **system
+audio** (Spotify, browser, whatever is playing) or plays a **WAV/MP3** file, and
+renders it live with **eight visualization modes**, **truecolor gradient
+themes**, automatic gain, and smoothing — using terminal characters (blocks,
+braille, box-drawing), no emojis.
 
 ```
-┌ antiwave · [>] loopback (system output) · 48000Hz · WATERFALL · phase:+ · 0:12/∞ ─┐
-█▓▒░ ░▒▓█ ▓▒░ ░▓█ ▒░█ ▓█                                                                
-▒░ ░▓▒░ ▓█░ ░▒░ ▓░ ▒█                                                                
-└─ [Tab]mode [t]theme:termal [m]mono [o]phase [space]pause [q]quit · peak:-6dB dom:523Hz ─┘
+ antiwave [LIVE] System output SPECTRUM phase:+ 0:12/∞        aurora · 48000Hz
+
+                          ▁▂▃▄▅▆▇█
+
+ [Tab] mode   [t] theme   [f] focus   [a] auto   [+/-] gain   [q] quit
 ```
 
 ## Usage
@@ -18,6 +20,9 @@ terminal characters (box-drawing + blocks), no emojis.
 antiwave                 # capture the system audio (whatever is playing)
 antiwave song.mp3        # play and visualize a file
 antiwave -silent song.wav   # file without playback (advances in real time)
+
+antiwave --immersive              # full-screen visualization (no HUD)
+antiwave --mode waterfall --theme ocean
 ```
 
 Static, dependency-free binaries for Windows and Linux:
@@ -28,40 +33,56 @@ make release
 # → dist/antiwave      (linux/amd64)
 ```
 
-## Visualization modes
+## Options
 
-Press `Tab` to cycle:
+| Flag | Description |
+|---|---|
+| `--silent` | file mode without playback |
+| `--immersive` | start full-screen (visualization only) |
+| `--mode` | `spectrum` (default) · `mirror` · `waveform` · `oscilloscope` · `waterfall` · `phase` · `radial` · `levels` |
+| `--theme` | `aurora` (default) · `ocean` · `ember` · `phosphor` · `mono` |
+| `--mono` | start in monochrome |
+| `--fps` | target frame rate (30 or 60, default 60) |
+
+## Visualization modes
 
 | Mode | Description |
 |---|---|
-| **WAVE** | Scrolling oscilloscope with peak envelope |
-| **BARS** | Frequency spectrum (FFT) with peak caps |
-| **WATERFALL** | Spectrogram (frequency × time) in intensity scale |
-| **VU** | Per-band level meters with peak hold |
-| **X-Y** | Phase scope (Lissajous): signal correlation |
+| **SPECTRUM** | Thin gradient bars, log frequency scale, peak caps |
+| **MIRROR** | Spectrum growing up and down from the center |
+| **WAVEFORM** | Scrolling amplitude envelope |
+| **OSCILLOSCOPE** | Thin braille trace, phase-triggered for stability |
+| **WATERFALL** | Spectrogram (frequency × time) |
+| **PHASE** | X-Y Lissajous figure |
+| **RADIAL** | Circular spectrum |
+| **LEVELS** | Per-band RMS meters with peak hold |
 
 ## Controls
 
 | Key | Action |
 |---|---|
-| `Tab` / `n` | cycle mode |
-| `t` | cycle color theme |
+| `Tab` / `→` | next mode |
+| `Shift+Tab` / `←` | previous mode |
+| `1`–`8` | jump to a mode |
+| `t` | cycle theme |
 | `m` | toggle monochrome |
+| `f` | toggle immersive (full-screen) |
+| `Esc` | exit immersive |
+| `a` | toggle automatic gain |
+| `+` / `-` | visual gain up / down |
 | `o` | inverted phase (visual mirror) |
-| `space` | pause / resume |
+| `space` | pause / freeze |
 | `q` / `Ctrl+C` | quit |
-
-## Themes
-
-`mono` (default), `termal`, `aurora`, `matriz`, `oceano`.
 
 ## How it works
 
 - **Linux**: captures the PulseAudio/PipeWire monitor (`jfreymuth/pulse`, pure Go).
 - **Windows**: captures WASAPI in loopback mode (`moutend/go-wca`, pure Go).
-- **No cgo**: the binary is static and cross-compiles for both OSes from one machine.
+- **Rendering**: `tcell` with truecolor (with automatic 256-color fallback).
+- **DSP**: Hann-windowed FFT, logarithmic bands, dB scaling, attack/release
+  smoothing, peak hold, and optional automatic gain.
 
-> Note: in capture mode, the "inverted phase" (`o`) is only a **visual mirror**;
+> Note: in capture mode, "inverted phase" (`o`) is only a **visual mirror**;
 > phase inversion does not change what you hear (the ear is insensitive to
 > absolute phase).
 
@@ -73,7 +94,7 @@ cmd/
   genwav/          # generates a demo WAV
 internal/
   audio/           # WAV/MP3 decoding, playback (oto), and per-OS capture
-  visual/          # rendering: 5 modes, themes, HUD
+  visual/          # rendering: 8 modes, themes, smoothing, HUD
 ```
 
 ## Requirements

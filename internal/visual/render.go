@@ -1,17 +1,15 @@
-// Package visual renders music in the terminal: multiple visualization modes
-// (wave, bars, waterfall, VU, X-Y), color themes, and a HUD using terminal
-// characters (box-drawing + blocks), no emojis.
+// Package visual renders music in the terminal: eight visualization modes,
+// color themes with truecolor gradients, smoothing and automatic gain, and a
+// modern HUD — using terminal characters (blocks, braille, box-drawing), no
+// emojis. It produces a grid of cells that the front-end blits to the screen.
 package visual
 
 import (
 	"fmt"
 	"math"
 	"math/cmplx"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/madelynnblue/go-dsp/fft"
 )
@@ -19,24 +17,26 @@ import (
 // fftSize is the FFT size used by the spectral modes.
 const fftSize = 2048
 
+// Cell is one terminal cell: a rune and an optional 24-bit foreground color
+// (0xRRGGBB). Fg == 0 means "use the terminal default".
+type Cell struct {
+	R  rune
+	Fg uint32
+}
+
+func rgb(r, g, b uint8) uint32 { return uint32(r)<<16 | uint32(g)<<8 | uint32(b) }
+
 // ---------------------------------------------------------------------------
-// Terminal glyphs (no emojis).
+// Glyphs.
 // ---------------------------------------------------------------------------
 
 const (
-	ramp      = "▁▂▃▄▅▆▇█"
 	blockFull = '█'
 	peakGlyph = '▔'
 	zeroGlyph = '·'
 )
 
-var rampRunes = []rune(ramp)
-
-// cell is one terminal cell: a rune plus an optional ANSI-256 color (0 = default).
-type cell struct {
-	r rune
-	c int
-}
+var rampRunes = []rune("▁▂▃▄▅▆▇█")
 
 func rampRune(v float64) rune {
 	if v <= 0 {
@@ -52,91 +52,187 @@ func rampRune(v float64) rune {
 }
 
 // ---------------------------------------------------------------------------
-// Visualization modes.
+// Modes.
 // ---------------------------------------------------------------------------
 
 type Mode int
 
 const (
-	ModeWaveform Mode = iota
-	ModeSpectrum
+	ModeSpectrum Mode = iota
+	ModeMirror
+	ModeWaveform
+	ModeOscilloscope
 	ModeWaterfall
-	ModeVU
-	ModeXY
+	ModePhase
+	ModeRadial
+	ModeLevels
+	modeCount
 )
 
 func (m Mode) String() string {
 	switch m {
-	case ModeWaveform:
-		return "WAVE"
 	case ModeSpectrum:
-		return "BARS"
+		return "SPECTRUM"
+	case ModeMirror:
+		return "MIRROR"
+	case ModeWaveform:
+		return "WAVEFORM"
+	case ModeOscilloscope:
+		return "OSCILLOSCOPE"
 	case ModeWaterfall:
 		return "WATERFALL"
-	case ModeVU:
-		return "VU"
-	case ModeXY:
-		return "X-Y"
+	case ModePhase:
+		return "PHASE"
+	case ModeRadial:
+		return "RADIAL"
+	case ModeLevels:
+		return "LEVELS"
 	}
 	return "?"
 }
 
 // ---------------------------------------------------------------------------
-// Color themes.
+// Themes.
 // ---------------------------------------------------------------------------
 
 type Theme struct {
 	Name   string
-	Colors []int // ANSI-256 indices, low to high intensity
+	Colors []uint32 // RGB stops, dark (bottom) to bright (top)
 }
 
 var Themes = []Theme{
 	{"mono", nil},
-	{"termal", []int{232, 88, 160, 196, 202, 208, 214, 220, 226, 231}},
-	{"aurora", []int{232, 17, 25, 39, 45, 50, 79, 85, 159, 195}},
-	{"matriz", []int{232, 22, 28, 34, 40, 46, 82, 118, 154, 190}},
-	{"oceano", []int{232, 17, 18, 19, 20, 21, 33, 45, 51, 87}},
+	{"aurora", []uint32{
+		rgb(22, 22, 46), rgb(32, 44, 96), rgb(38, 82, 150), rgb(32, 138, 166),
+		rgb(42, 180, 192), rgb(96, 200, 232), rgb(158, 124, 242), rgb(206, 96, 224)}},
+	{"ocean", []uint32{
+		rgb(10, 22, 64), rgb(20, 44, 104), rgb(22, 74, 152), rgb(30, 112, 202),
+		rgb(42, 152, 222), rgb(64, 192, 234), rgb(126, 222, 244), rgb(208, 250, 255)}},
+	{"ember", []uint32{
+		rgb(44, 12, 12), rgb(96, 28, 12), rgb(156, 48, 12), rgb(206, 84, 18),
+		rgb(234, 124, 32), rgb(250, 172, 54), rgb(255, 212, 96), rgb(255, 242, 206)}},
+	{"phosphor", []uint32{
+		rgb(0, 42, 0), rgb(0, 74, 0), rgb(0, 112, 20), rgb(22, 162, 30),
+		rgb(62, 202, 42), rgb(132, 230, 82), rgb(190, 250, 142), rgb(232, 255, 214)}},
 }
 
-func (t Theme) colorIndex(v float64) int {
+func lerpColor(a, b uint32, t float64) uint32 {
+	ar, ag, ab := (a>>16)&0xff, (a>>8)&0xff, a&0xff
+	br, bg, bb := (b>>16)&0xff, (b>>8)&0xff, b&0xff
+	r := uint8(float64(ar) + (float64(br)-float64(ar))*t)
+	g := uint8(float64(ag) + (float64(bg)-float64(ag))*t)
+	bl := uint8(float64(ab) + (float64(bb)-float64(ab))*t)
+	return rgb(r, g, bl)
+}
+
+func (t Theme) colorAt(v float64) uint32 {
 	if len(t.Colors) == 0 {
 		return 0
 	}
-	i := int(v*float64(len(t.Colors)-1) + 0.5)
-	if i < 0 {
-		i = 0
-	} else if i >= len(t.Colors) {
-		i = len(t.Colors) - 1
+	if v < 0 {
+		v = 0
+	} else if v > 1 {
+		v = 1
 	}
-	return t.Colors[i]
+	x := v * float64(len(t.Colors)-1)
+	i := int(x)
+	if i >= len(t.Colors)-1 {
+		return t.Colors[len(t.Colors)-1]
+	}
+	return lerpColor(t.Colors[i], t.Colors[i+1], x-float64(i))
 }
 
 // ---------------------------------------------------------------------------
-// Renderer (persistent state across frames).
+// Renderer.
 // ---------------------------------------------------------------------------
 
 type Renderer struct {
-	mode    Mode
-	theme   int
-	mono    bool
-	fall    [][]float32 // waterfall history (newest first)
-	fallW   int
-	vuPeaks []float32
+	mode      Mode
+	theme     int
+	mono      bool
+	immersive bool
+	autoGain  bool
+	gain      float64
+
+	// Smoothing / peak-hold state (per column).
+	smooth []float64
+	peaks  []float64
+	lastT  time.Time
+
+	// Waterfall history (newest first).
+	fall  [][]float32
+	fallW int
+
+	// Level-meter peak hold.
+	meterPeaks []float64
 }
 
 func NewRenderer() *Renderer {
-	return &Renderer{mode: ModeWaveform, theme: 0, mono: true}
+	return &Renderer{
+		mode:     ModeSpectrum,
+		theme:    1, // aurora
+		mono:     false,
+		autoGain: true,
+		gain:     1.0,
+	}
 }
 
-func (r *Renderer) Mode() Mode { return r.mode }
-func (r *Renderer) NextMode() {
-	r.mode = (r.mode + 1) % 5
+func (r *Renderer) Mode() Mode     { return r.mode }
+func (r *Renderer) NextMode()      { r.mode = (r.mode + 1) % modeCount }
+func (r *Renderer) PrevMode()      { r.mode = (r.mode + modeCount - 1) % modeCount }
+func (r *Renderer) SetMode(m Mode) { r.mode = m }
+func (r *Renderer) NextTheme()     { r.theme = (r.theme + 1) % len(Themes); r.mono = false }
+func (r *Renderer) SetTheme(i int) {
+	if i >= 0 && i < len(Themes) {
+		r.theme = i
+		r.mono = i == 0
+	}
 }
-func (r *Renderer) NextTheme() {
-	r.theme = (r.theme + 1) % len(Themes)
-	r.mono = false
+func (r *Renderer) SetMonoForFlag(m bool) { r.mono = m }
+func (r *Renderer) ToggleMono()           { r.mono = !r.mono }
+func (r *Renderer) ToggleImmersive()      { r.immersive = !r.immersive }
+func (r *Renderer) SetImmersive(b bool)   { r.immersive = b }
+func (r *Renderer) Immersive() bool       { return r.immersive }
+func (r *Renderer) ToggleAutoGain()       { r.autoGain = !r.autoGain }
+func (r *Renderer) AutoGain() bool        { return r.autoGain }
+func (r *Renderer) AdjustGain(d float64) {
+	r.gain *= d
+	if r.gain < 0.25 {
+		r.gain = 0.25
+	}
+	if r.gain > 16 {
+		r.gain = 16
+	}
 }
-func (r *Renderer) ToggleMono() { r.mono = !r.mono }
+
+// ModeByName resolves a mode by its display name (case-insensitive).
+func ModeByName(s string) (Mode, bool) {
+	for m := ModeSpectrum; m < modeCount; m++ {
+		if strings.EqualFold(m.String(), s) {
+			return m, true
+		}
+	}
+	return 0, false
+}
+
+// ModeByIndex resolves a 0-based mode index (1..8 keys).
+func ModeByIndex(i int) (Mode, bool) {
+	if i >= 0 && i < int(modeCount) {
+		return Mode(i), true
+	}
+	return 0, false
+}
+
+// ThemeIndexByName resolves a theme by name (case-insensitive).
+func ThemeIndexByName(s string) (int, bool) {
+	for i, t := range Themes {
+		if strings.EqualFold(t.Name, s) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
 func (r *Renderer) ThemeName() string {
 	if r.mono {
 		return "mono"
@@ -146,36 +242,25 @@ func (r *Renderer) ThemeName() string {
 
 func (r *Renderer) themeObj() Theme { return Themes[r.theme] }
 
-// shade maps an intensity [0,1] to a cell: block ramp (mono) or a colored
-// block. Intended for heatmaps (waterfall).
-func (r *Renderer) shade(v float64) cell {
-	if v < 0 {
-		v = 0
-	} else if v > 1 {
-		v = 1
-	}
+// shade maps an intensity [0,1] to a cell: block ramp (mono) or a colored block.
+func (r *Renderer) shade(v float64) Cell {
 	if r.mono {
-		return cell{r: rampRune(v)}
+		return Cell{R: rampRune(v)}
 	}
-	return cell{r: blockFull, c: r.themeObj().colorIndex(v)}
+	return Cell{R: blockFull, Fg: r.themeObj().colorAt(v)}
 }
 
-// bar returns a solid bar cell: full block (height conveys amplitude), colored
-// by v in color themes.
-func (r *Renderer) bar(v float64) cell {
-	if v < 0 {
-		v = 0
-	} else if v > 1 {
-		v = 1
-	}
+// barCell returns a solid block whose color follows a vertical gradient
+// (v = 0 at the bottom, 1 at the top).
+func (r *Renderer) barCell(v float64) Cell {
 	if r.mono {
-		return cell{r: blockFull}
+		return Cell{R: blockFull}
 	}
-	return cell{r: blockFull, c: r.themeObj().colorIndex(v)}
+	return Cell{R: blockFull, Fg: r.themeObj().colorAt(v)}
 }
 
 // ---------------------------------------------------------------------------
-// Frame: per-frame input.
+// Frame.
 // ---------------------------------------------------------------------------
 
 type Frame struct {
@@ -192,61 +277,85 @@ type Frame struct {
 // Render.
 // ---------------------------------------------------------------------------
 
-func (r *Renderer) Render(f Frame, w, h int) string {
-	if w < 20 {
-		w = 20
+func (r *Renderer) Render(f Frame, w, h int) [][]Cell {
+	if w < 10 {
+		w = 10
 	}
-	if h < 6 {
-		h = 6
+	if h < 4 {
+		h = 4
 	}
+	grid := makeGrid(h, w)
+
+	if r.immersive {
+		r.drawBody(grid, 0, h, f, w)
+		return grid
+	}
+
+	bodyTop := 1
 	bodyH := h - 2
 	if bodyH < 1 {
 		bodyH = 1
+		bodyTop = 0
 	}
+	r.drawHeader(grid[0], f, w)
+	r.drawBody(grid, bodyTop, bodyH, f, w)
+	r.drawFooter(grid[h-1], f, w)
+	return grid
+}
 
-	grid := makeGrid(bodyH, w)
+func (r *Renderer) drawBody(grid [][]Cell, top, h int, f Frame, w int) {
+	if h < 1 {
+		return
+	}
+	body := grid[top : top+h]
 
 	var mags []float64
 	switch r.mode {
-	case ModeWaveform:
-		r.drawWaveform(grid, f, w, bodyH)
+	case ModeSpectrum, ModeMirror, ModeRadial, ModeLevels, ModeWaterfall:
+		mags = computeSpectrum(f.Samples, f.Inverted)
+	}
+
+	switch r.mode {
 	case ModeSpectrum:
-		mags = computeSpectrum(f.Samples, f.Inverted)
-		r.drawSpectrum(grid, f, mags, w, bodyH)
+		levels, peaks := r.columnLevels(f, mags, barCount(w))
+		r.drawSpectrum(body, levels, peaks, h, w)
+	case ModeMirror:
+		levels, peaks := r.columnLevels(f, mags, barCount(w))
+		r.drawMirror(body, levels, peaks, h, w)
+	case ModeWaveform:
+		r.drawWaveform(body, f, w, h)
+	case ModeOscilloscope:
+		r.drawOscilloscope(body, f, w, h)
 	case ModeWaterfall:
-		mags = computeSpectrum(f.Samples, f.Inverted)
-		r.drawWaterfall(grid, f, mags, w, bodyH)
-	case ModeVU:
-		mags = computeSpectrum(f.Samples, f.Inverted)
-		r.drawVU(grid, f, mags, w, bodyH)
-	case ModeXY:
-		r.drawXY(grid, f, w, bodyH)
+		r.drawWaterfall(body, f, mags, w, h)
+	case ModePhase:
+		r.drawPhase(body, f, w, h)
+	case ModeRadial:
+		levels, _ := r.columnLevels(f, mags, barCount(w))
+		r.drawRadial(body, levels, w, h)
+	case ModeLevels:
+		r.drawLevels(body, f, mags, w, h)
 	}
-
-	peak := peakLevel(f.Samples)
-	var dom float64
-	if mags != nil {
-		dom = dominantFreq(mags, f.SampleRate)
-	}
-
-	var b strings.Builder
-	b.WriteString("\x1b[H")
-	b.WriteString(boxLine('┌', '┐', r.header(f), w))
-	b.WriteString("\x1b[K\r\n")
-	for _, row := range grid {
-		b.WriteString(serializeRow(row))
-		b.WriteString("\x1b[K\r\n")
-	}
-	b.WriteString(boxLine('└', '┘', r.footer(f, peak, dom), w))
-	b.WriteString("\x1b[K")
-	b.WriteString("\x1b[J")
-	return b.String()
 }
 
-func (r *Renderer) header(f Frame) string {
-	state := ">"
+// ---------------------------------------------------------------------------
+// HUD.
+// ---------------------------------------------------------------------------
+
+var (
+	cTitle  = rgb(210, 230, 255)
+	cDim    = rgb(120, 130, 145)
+	cAccent = rgb(0, 210, 220)
+	cLive   = rgb(80, 220, 120)
+	cPaused = rgb(240, 180, 60)
+)
+
+func (r *Renderer) drawHeader(row []Cell, f Frame, w int) {
+	state := "LIVE"
+	stateCol := cLive
 	if f.Paused {
-		state = "||"
+		state = "PAUSED"
+		stateCol = cPaused
 	}
 	phase := "+"
 	if f.Inverted {
@@ -256,83 +365,92 @@ func (r *Renderer) header(f Frame) string {
 	if f.Total == 0 {
 		total = "∞"
 	}
-	mode := colorStr("1;36", r.mode.String()) // cyan
-	return fmt.Sprintf(" antiwave · [%s] %s · %dHz · %s · phase:%s · %s/%s ",
-		state, f.Name, f.SampleRate, mode, phase, formatDur(f.Elapsed), total)
+
+	x := 0
+	x = writeText(row, x, " antiwave", cTitle, 1)
+	x = writeText(row, x+1, "["+state+"]", stateCol, 0)
+	x = writeText(row, x+1, truncate(f.Name, 24), cDim, 0)
+	x = writeText(row, x+1, r.mode.String(), r.accent(), 1)
+	x = writeText(row, x+1, "phase:"+phase+" "+formatDur(f.Elapsed)+"/"+total, cDim, 0)
+
+	right := fmt.Sprintf("%s · %dHz", r.ThemeName(), f.SampleRate)
+	if r.autoGain {
+		right += " · AUTO"
+	}
+	xr := w - len([]rune(right))
+	if xr > x {
+		writeText(row, xr, right, cDim, 0)
+	}
 }
 
-func (r *Renderer) footer(f Frame, peak float32, dom float64) string {
+func (r *Renderer) drawFooter(row []Cell, f Frame, w int) {
+	peak := peakLevel(f.Samples)
+	dom := 0.0
+	if f.SampleRate > 0 && len(f.Samples) >= fftSize {
+		mags := computeSpectrum(f.Samples, f.Inverted)
+		dom = dominantFreq(mags, f.SampleRate)
+	}
 	domStr := "-"
 	if dom > 0 {
 		domStr = fmt.Sprintf("%.0fHz", dom)
 	}
-	peakStr := toDB(peak)
-	return fmt.Sprintf(" [Tab]mode [t]theme:%s [m]mono [o]phase [space]pause [q]quit · peak:%s dom:%s ",
-		r.ThemeName(), peakStr, domStr)
+	left := "[Tab] mode   [t] theme   [f] focus   [a] auto   [+/-] gain   [q] quit"
+	right := fmt.Sprintf("peak %s   dom %s", toDB(peak), domStr)
+
+	x := writeText(row, 0, left, cDim, 0)
+	xr := w - len([]rune(right))
+	if xr > x {
+		writeText(row, xr, right, cDim, 0)
+	}
+}
+
+func (r *Renderer) accent() uint32 {
+	if r.mono {
+		return cTitle
+	}
+	return r.themeObj().colorAt(0.85)
 }
 
 // ---------------------------------------------------------------------------
-// Rendering helpers.
+// Text helpers.
 // ---------------------------------------------------------------------------
 
-func makeGrid(h, w int) [][]cell {
-	g := make([][]cell, h)
+func makeGrid(h, w int) [][]Cell {
+	g := make([][]Cell, h)
 	for i := range g {
-		g[i] = make([]cell, w)
-		for j := range g[i] {
-			g[i][j] = cell{r: ' '}
-		}
+		g[i] = make([]Cell, w)
 	}
 	return g
 }
 
-func serializeRow(row []cell) string {
-	var b strings.Builder
-	prev := -1
-	for _, c := range row {
-		if c.c != prev {
-			if c.c == 0 {
-				b.WriteString("\x1b[0m")
-			} else {
-				b.WriteString("\x1b[38;5;" + strconv.Itoa(c.c) + "m")
-			}
-			prev = c.c
+// writeText writes runes into row starting at x, returning the next column.
+func writeText(row []Cell, x int, s string, fg uint32, width int) int {
+	for _, r := range s {
+		if x >= len(row) {
+			return x
 		}
-		b.WriteRune(c.r)
+		if r == ' ' && width == 0 {
+			// Preserve ordinary spaces.
+		}
+		row[x] = Cell{R: r, Fg: fg}
+		x++
 	}
-	b.WriteString("\x1b[0m")
-	return b.String()
+	return x
 }
 
-func boxLine(l, rr rune, content string, w int) string {
-	inner := w - 2
-	fill := inner - visibleLen(content)
-	if fill < 0 {
-		fill = 0
+func truncate(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
 	}
-	return string(l) + content + strings.Repeat("─", fill) + string(rr)
-}
-
-var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
-
-func visibleLen(s string) int {
-	return utf8.RuneCountInString(ansiRe.ReplaceAllString(s, ""))
-}
-
-func colorStr(code, s string) string {
-	return "\x1b[" + code + "m" + s + "\x1b[0m"
-}
-
-func formatDur(d time.Duration) string {
-	if d < 0 {
-		d = 0
+	if max <= 3 {
+		return string(r[:max])
 	}
-	sec := int(d.Seconds())
-	return fmt.Sprintf("%d:%02d", sec/60, sec%60)
+	return string(r[:max-1]) + "…"
 }
 
 // ---------------------------------------------------------------------------
-// Signal analysis.
+// DSP.
 // ---------------------------------------------------------------------------
 
 func computeSpectrum(samples []float32, inverted bool) []float64 {
@@ -362,6 +480,123 @@ func computeSpectrum(samples []float32, inverted bool) []float64 {
 		mags[k] = cmplx.Abs(spec[k])
 	}
 	return mags
+}
+
+// columnLevels maps the spectrum to per-column levels (log frequency bins, dB
+// scale), applies automatic gain and smoothing, and returns smoothed levels
+// plus peak-hold values.
+func (r *Renderer) columnLevels(f Frame, mags []float64, n int) (levels, peaks []float64) {
+	raw := make([]float64, n)
+	half := len(mags)
+	norm := float64(fftSize) / 2.0
+	for c := 0; c < n; c++ {
+		b0, b1 := freqBins(c, n, half, f.SampleRate)
+		var m float64
+		for k := b0; k < b1; k++ {
+			if mags[k] > m {
+				m = mags[k]
+			}
+		}
+		amp := m / norm
+		// Perceptual dB scaling over a 60 dB range.
+		var lvl float64
+		if amp > 1e-6 {
+			db := 20 * math.Log10(amp)
+			lvl = (db + 60) / 60
+		}
+		raw[c] = lvl
+	}
+
+	// Automatic gain.
+	if r.autoGain {
+		var m float64
+		for _, v := range raw {
+			if v > m {
+				m = v
+			}
+		}
+		if m > 1e-4 {
+			desired := 0.85 / m
+			if desired > 6 {
+				desired = 6
+			}
+			if desired < 0.4 {
+				desired = 0.4
+			}
+			r.gain += (desired - r.gain) * 0.08
+		}
+	}
+	for c := range raw {
+		raw[c] *= r.gain
+		if raw[c] < 0 {
+			raw[c] = 0
+		} else if raw[c] > 1 {
+			raw[c] = 1
+		}
+	}
+
+	// Time-based smoothing + peak hold.
+	now := time.Now()
+	dt := now.Sub(r.lastT).Seconds()
+	if dt <= 0 {
+		dt = 1.0 / 30
+	} else if dt > 0.1 {
+		dt = 0.1
+	}
+	r.lastT = now
+	if len(r.smooth) != n {
+		r.smooth = make([]float64, n)
+		r.peaks = make([]float64, n)
+	}
+	attack := 1 - math.Exp(-dt/0.012)
+	release := 1 - math.Exp(-dt/0.13)
+	peakFall := 0.55
+	levels = make([]float64, n)
+	peaks = make([]float64, n)
+	for c := 0; c < n; c++ {
+		s := r.smooth[c]
+		t := raw[c]
+		if t >= s {
+			s += (t - s) * attack
+		} else {
+			s += (t - s) * release
+		}
+		r.smooth[c] = s
+		p := r.peaks[c]
+		if s >= p {
+			p = s
+		} else {
+			p -= peakFall * dt
+			if p < s {
+				p = s
+			}
+		}
+		r.peaks[c] = p
+		levels[c] = s
+		peaks[c] = p
+	}
+	return levels, peaks
+}
+
+func freqBins(c, w, half, sampleRate int) (int, int) {
+	fmin, fmax := 20.0, float64(sampleRate)/2.0
+	if fmax <= fmin {
+		fmax = fmin + 1
+	}
+	f0 := fmin * math.Pow(fmax/fmin, float64(c)/float64(w))
+	f1 := fmin * math.Pow(fmax/fmin, float64(c+1)/float64(w))
+	b0 := int(f0 * fftSize / float64(sampleRate))
+	b1 := int(f1 * fftSize / float64(sampleRate))
+	if b0 >= half {
+		b0 = half - 1
+	}
+	if b1 <= b0 {
+		b1 = b0 + 1
+	}
+	if b1 > half {
+		b1 = half
+	}
+	return b0, b1
 }
 
 func peakLevel(samples []float32) float32 {
@@ -402,4 +637,12 @@ func dominantFreq(mags []float64, sampleRate int) float64 {
 		return 0
 	}
 	return float64(best) * float64(sampleRate) / float64(fftSize)
+}
+
+func formatDur(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	sec := int(d.Seconds())
+	return fmt.Sprintf("%d:%02d", sec/60, sec%60)
 }
