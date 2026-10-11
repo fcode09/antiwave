@@ -227,6 +227,10 @@ func handleKey(ev *tcell.EventKey, r *visual.Renderer, src audio.Source) bool {
 		if m, ok := visual.ModeByIndex(int(ev.Rune() - '1')); ok {
 			r.SetMode(m)
 		}
+	case '9':
+		r.SetMode(visual.ModeHalo)
+	case '0':
+		r.SetMode(visual.ModeOrbit)
 	}
 	return false
 }

@@ -39,8 +39,8 @@ make release
 |---|---|
 | `--silent` | file mode without playback |
 | `--immersive` | start full-screen (visualization only) |
-| `--mode` | `spectrum` (default) · `mirror` · `waveform` · `oscilloscope` · `waterfall` · `phase` · `radial` · `levels` |
-| `--theme` | `aurora` (default) · `ocean` · `ember` · `phosphor` · `mono` |
+| `--mode` | `spectrum` (default) · `mirror` · `waveform` · `oscilloscope` · `waterfall` · `phase` · `radial` · `levels` · `halo` · `orbit` · `nebula` |
+| `--theme` | `aurora` (default) · `ocean` · `ember` · `phosphor` · `ion` · `ghost` · `amethyst` · `mono` |
 | `--mono` | start in monochrome |
 | `--fps` | target frame rate (30 or 60, default 60) |
 
@@ -56,6 +56,9 @@ make release
 | **PHASE** | X-Y Lissajous figure |
 | **RADIAL** | Circular spectrum |
 | **LEVELS** | Per-band RMS meters with peak hold |
+| **HALO** | Thin reactive energy ring with a fading trail |
+| **ORBIT** | Tilted ellipses with bright satellites tracing each path |
+| **NEBULA** | Particle swarm pushed outward by bass |
 
 ## Controls
 
@@ -64,6 +67,8 @@ make release
 | `Tab` / `→` | next mode |
 | `Shift+Tab` / `←` | previous mode |
 | `1`–`8` | jump to a mode |
+| `9` | Halo mode |
+| `0` | Orbit mode |
 | `t` | cycle theme |
 | `m` | toggle monochrome |
 | `f` | toggle immersive (full-screen) |

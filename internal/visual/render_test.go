@@ -96,3 +96,15 @@ func TestModeByName(t *testing.T) {
 		t.Errorf("ModeByName(waterfall) = %v, %v", m, ok)
 	}
 }
+
+func TestRenderFuturisticModes(t *testing.T) {
+	r := NewRenderer()
+	frame := testFrame()
+	for _, m := range []Mode{ModeHalo, ModeOrbit, ModeNebula} {
+		r.mode = m
+		g := r.Render(frame, 80, 24)
+		if !anyNonSpace(g[1 : len(g)-1]) {
+			t.Errorf("mode %v: body is empty", m)
+		}
+	}
+}

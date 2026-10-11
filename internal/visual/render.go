@@ -66,6 +66,9 @@ const (
 	ModePhase
 	ModeRadial
 	ModeLevels
+	ModeHalo
+	ModeOrbit
+	ModeNebula
 	modeCount
 )
 
@@ -87,6 +90,12 @@ func (m Mode) String() string {
 		return "RADIAL"
 	case ModeLevels:
 		return "LEVELS"
+	case ModeHalo:
+		return "HALO"
+	case ModeOrbit:
+		return "ORBIT"
+	case ModeNebula:
+		return "NEBULA"
 	}
 	return "?"
 }
@@ -114,6 +123,15 @@ var Themes = []Theme{
 	{"phosphor", []uint32{
 		rgb(0, 42, 0), rgb(0, 74, 0), rgb(0, 112, 20), rgb(22, 162, 30),
 		rgb(62, 202, 42), rgb(132, 230, 82), rgb(190, 250, 142), rgb(232, 255, 214)}},
+	{"ion", []uint32{
+		rgb(0, 36, 72), rgb(0, 72, 140), rgb(0, 128, 200), rgb(0, 190, 230),
+		rgb(60, 225, 250), rgb(140, 240, 255), rgb(210, 250, 255), rgb(244, 253, 255)}},
+	{"ghost", []uint32{
+		rgb(28, 32, 42), rgb(56, 62, 78), rgb(104, 112, 134), rgb(150, 158, 182),
+		rgb(192, 200, 220), rgb(224, 230, 244), rgb(242, 246, 252), rgb(252, 253, 255)}},
+	{"amethyst", []uint32{
+		rgb(28, 14, 56), rgb(64, 26, 112), rgb(112, 44, 172), rgb(152, 72, 206),
+		rgb(184, 116, 228), rgb(210, 166, 244), rgb(232, 210, 252), rgb(246, 238, 255)}},
 }
 
 func lerpColor(a, b uint32, t float64) uint32 {
@@ -165,6 +183,14 @@ type Renderer struct {
 
 	// Level-meter peak hold.
 	meterPeaks []float64
+
+	// Glow buffer (braille resolution) and animation state for Halo/Orbit/Nebula.
+	glow     []float32
+	glowW    int
+	glowH    int
+	glowLast time.Time
+	animT    float64
+	parts    []particle
 }
 
 func NewRenderer() *Renderer {
@@ -311,7 +337,7 @@ func (r *Renderer) drawBody(grid [][]Cell, top, h int, f Frame, w int) {
 
 	var mags []float64
 	switch r.mode {
-	case ModeSpectrum, ModeMirror, ModeRadial, ModeLevels, ModeWaterfall:
+	case ModeSpectrum, ModeMirror, ModeRadial, ModeLevels, ModeWaterfall, ModeHalo, ModeOrbit, ModeNebula:
 		mags = computeSpectrum(f.Samples, f.Inverted)
 	}
 
@@ -335,6 +361,12 @@ func (r *Renderer) drawBody(grid [][]Cell, top, h int, f Frame, w int) {
 		r.drawRadial(body, levels, w, h)
 	case ModeLevels:
 		r.drawLevels(body, f, mags, w, h)
+	case ModeHalo:
+		r.drawHalo(body, f, mags, w, h)
+	case ModeOrbit:
+		r.drawOrbit(body, f, mags, w, h)
+	case ModeNebula:
+		r.drawNebula(body, f, mags, w, h)
 	}
 }
 
