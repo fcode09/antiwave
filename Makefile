@@ -15,6 +15,7 @@ capture: build
 
 # Generate a demo WAV (note arpeggio) at samples/demo.wav
 gen:
+	mkdir -p samples
 	go run ./cmd/genwav -o samples/demo.wav
 
 # Generate the demo and play it

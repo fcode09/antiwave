@@ -97,6 +97,22 @@ func TestModeByName(t *testing.T) {
 	}
 }
 
+func TestModeByNameRoundTrip(t *testing.T) {
+	for m := ModeSpectrum; m < modeCount; m++ {
+		if got, ok := ModeByName(m.String()); !ok || got != m {
+			t.Errorf("ModeByName(%q) = %v, %v", m.String(), got, ok)
+		}
+	}
+}
+
+func TestThemeByNameRoundTrip(t *testing.T) {
+	for i, th := range Themes {
+		if got, ok := ThemeIndexByName(th.Name); !ok || got != i {
+			t.Errorf("ThemeIndexByName(%q) = %d, %v", th.Name, got, ok)
+		}
+	}
+}
+
 func TestRenderFuturisticModes(t *testing.T) {
 	r := NewRenderer()
 	frame := testFrame()

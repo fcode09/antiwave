@@ -1,4 +1,4 @@
-module github.com/fquea/antiwave
+module github.com/fcode09/antiwave
 
 go 1.27.1
 

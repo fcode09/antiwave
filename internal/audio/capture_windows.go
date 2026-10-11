@@ -21,8 +21,9 @@ const (
 )
 
 func newSystemCapture(push func([]float32)) (*captureHandle, error) {
-	// Initialize COM in MTA. Ignore the error: it may already be initialized.
-	_ = ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED)
+	// Initialize COM in MTA. Track whether we own the initialization so we only
+	// uninitialize it ourselves on shutdown.
+	coInit := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED) == nil
 
 	var mmde *wca.IMMDeviceEnumerator
 	if err := wca.CoCreateInstance(wca.CLSID_MMDeviceEnumerator, 0, wca.CLSCTX_ALL, wca.IID_IMMDeviceEnumerator, &mmde); err != nil {
@@ -79,8 +80,10 @@ func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 
 	var running atomic.Bool
 	running.Store(true)
+	done := make(chan struct{})
 
 	go func() {
+		defer close(done)
 		for running.Load() {
 			var packetSize uint32
 			if err := acc.GetNextPacketSize(&packetSize); err != nil {
@@ -113,11 +116,18 @@ func newSystemCapture(push func([]float32)) (*captureHandle, error) {
 	stop := func() {
 		running.Store(false)
 		ac.Stop()
+		// Wait for the reader goroutine to finish before releasing interfaces.
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
 		acc.Release()
 		ac.Release()
 		mmd.Release()
 		mmde.Release()
-		ole.CoUninitialize()
+		if coInit {
+			ole.CoUninitialize()
+		}
 	}
 
 	return &captureHandle{

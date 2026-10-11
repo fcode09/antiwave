@@ -2,7 +2,7 @@
 
 A modern terminal audio visualizer written in Go. It captures the **system
 audio** (Spotify, browser, whatever is playing) or plays a **WAV/MP3** file, and
-renders it live with **eight visualization modes**, **truecolor gradient
+renders it live with **eleven visualization modes**, **truecolor gradient
 themes**, automatic gain, and smoothing — using terminal characters (blocks,
 braille, box-drawing), no emojis.
 
@@ -31,6 +31,18 @@ Static, dependency-free binaries for Windows and Linux:
 make release
 # → dist/antiwave.exe  (windows/amd64)
 # → dist/antiwave      (linux/amd64)
+```
+
+## Building from source
+
+Requires Go 1.27+.
+
+```bash
+git clone git@github.com:fcode09/antiwave.git
+cd antiwave
+go build ./cmd/antiwave          # → ./antiwave
+# or cross-compile both platforms:
+make release
 ```
 
 ## Options
@@ -100,14 +112,22 @@ cmd/
   genwav/          # generates a demo WAV
 internal/
   audio/           # WAV/MP3 decoding, playback (oto), and per-OS capture
-  visual/          # rendering: 8 modes, themes, smoothing, HUD
+  visual/          # rendering: 11 modes, themes, smoothing, HUD
 ```
 
 ## Requirements
 
-- Go 1.21+ (tested with 1.27).
+- Go 1.27+.
 - Linux: PulseAudio or PipeWire (with `pipewire-pulse`).
 - Windows: 10/11 (WASAPI; no "Stereo Mix" needed, uses loopback).
+
+## Current limitations
+
+- Audio is mixed to **mono** for visualization; a true stereo scope and L/R
+  meters are planned.
+- The Windows capture is cross-compiled but not yet validated on a live Windows
+  machine.
+- Persistent configuration is not implemented yet.
 
 ## License
 

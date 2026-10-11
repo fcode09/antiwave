@@ -15,8 +15,8 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 
-	"github.com/fquea/antiwave/internal/audio"
-	"github.com/fquea/antiwave/internal/visual"
+	"github.com/fcode09/antiwave/internal/audio"
+	"github.com/fcode09/antiwave/internal/visual"
 )
 
 const minWindow = 2048 // at least one full FFT worth of samples
@@ -31,12 +31,21 @@ func usage() {
 func main() {
 	silent := flag.Bool("silent", false, "file mode without playback (advances in real time, visualizes only)")
 	immersive := flag.Bool("immersive", false, "start in immersive mode (visualization only)")
-	modeFlag := flag.String("mode", "spectrum", "initial mode: spectrum|mirror|waveform|oscilloscope|waterfall|phase|radial|levels")
-	themeFlag := flag.String("theme", "aurora", "initial theme: mono|aurora|ocean|ember|phosphor")
+	modeFlag := flag.String("mode", "spectrum", "initial mode: spectrum|mirror|waveform|oscilloscope|waterfall|phase|radial|levels|halo|orbit|nebula")
+	themeFlag := flag.String("theme", "aurora", "initial theme: mono|aurora|ocean|ember|phosphor|ion|ghost|amethyst")
 	mono := flag.Bool("mono", false, "start in monochrome mode")
 	fps := flag.Int("fps", 60, "target frames per second (30 or 60)")
 	flag.Usage = usage
 	flag.Parse()
+
+	if _, ok := visual.ModeByName(*modeFlag); !ok {
+		fmt.Fprintf(os.Stderr, "[x] unknown mode %q (see --help)\n", *modeFlag)
+		os.Exit(2)
+	}
+	if _, ok := visual.ThemeIndexByName(*themeFlag); !ok {
+		fmt.Fprintf(os.Stderr, "[x] unknown theme %q (see --help)\n", *themeFlag)
+		os.Exit(2)
+	}
 
 	enableVT()
 
@@ -73,6 +82,8 @@ func main() {
 		}
 		src = cs
 	}
+	// Start playback for file mode (capture and silent modes start on their own).
+	src.Play()
 	defer src.Close()
 
 	// Terminal screen.
@@ -92,12 +103,15 @@ func main() {
 
 	renderer := visual.NewRenderer()
 	renderer.SetImmersive(*immersive)
-	renderer.SetMonoForFlag(*mono)
 	if m, ok := visual.ModeByName(*modeFlag); ok {
 		renderer.SetMode(m)
 	}
 	if ti, ok := visual.ThemeIndexByName(*themeFlag); ok {
 		renderer.SetTheme(ti)
+	}
+	// Apply --mono last so it wins over the theme's own mono flag.
+	if *mono {
+		renderer.SetMonoForFlag(true)
 	}
 
 	interval := time.Second / time.Duration(clampFPS(*fps))
